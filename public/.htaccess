@@ -1,0 +1,23 @@
+RewriteEngine On
+RewriteBase /misproyectos/inventario_ventas/public/
+
+# Redirigir al index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Seguridad: Denegar acceso a archivos sensibles
+<FilesMatch "\.(env|sql|md|log|lock)$">
+    Require all denied
+</FilesMatch>
+
+# Seguridad: Denegar listado de directorios
+Options -Indexes
+
+# Seguridad: Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
