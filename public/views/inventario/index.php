@@ -85,6 +85,27 @@
     </div>
 </div>
 
+<!-- Productos por reabastecer -->
+<div class="card border-0 shadow-sm mb-4" id="cardReorden" style="display:none;">
+    <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0 text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Productos por reabastecer</h5>
+        <span class="badge bg-warning rounded-pill" id="reordenCount">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código</th><th>Producto</th><th>Stock actual</th>
+                        <th>Stock mín</th><th>Sugerencia</th><th>Cajas</th><th></th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyReorden"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Búsqueda -->
 <div class="row mb-4">
     <div class="col-md-6">
@@ -105,7 +126,7 @@
                         <th>Código</th><th>Producto</th>
                         <th style="width:80px">Unidad</th><th style="width:80px">Fracción</th>
                         <th style="width:80px">Dif U</th><th style="width:80px">Dif F</th>
-                        <th style="width:100px">P.Venta</th><th style="width:80px">Stock Mín</th>
+                        <th style="width:100px">Precio Venta</th><th style="width:80px">Stock Mín</th>
                         <th style="width:100px">Acciones</th>
                     </tr>
                 </thead>
@@ -219,6 +240,27 @@ $('#formAjuste').on('submit', function(e) {
     });
 });
 
+function cargarReorden() {
+    $.getJSON(BASE_URL + '/inventario/sugerencias-reorden', function(r) {
+        if (!r.success || !r.data.length) { $('#cardReorden').hide(); return; }
+        var html = '';
+        $.each(r.data, function(i, p) {
+            var urgClass = p.unidad <= 0 ? 'table-danger' : (p.unidad <= p.stock_minimo ? 'table-warning' : '');
+            html += '<tr class="' + urgClass + '">' +
+                '<td><small>' + escHtml(p.codigo) + '</small></td>' +
+                '<td><strong>' + escHtml(p.descripcion) + '</strong></td>' +
+                '<td class="fw-bold ' + (p.unidad <= 0 ? 'text-danger' : '') + '">' + (p.unidad||0) + '</td>' +
+                '<td>' + (p.stock_minimo||0) + '</td>' +
+                '<td class="fw-bold text-primary">' + p.sugerido + ' und</td>' +
+                '<td><span class="badge bg-info">' + p.cajas_sugeridas + ' caja(s)</span></td>' +
+                '<td><a href="' + BASE_URL + '/ingresos" class="btn btn-sm btn-outline-primary" title="Ir a ingresos"><i class="fas fa-plus"></i></a></td></tr>';
+        });
+        $('#tbodyReorden').html(html);
+        $('#reordenCount').text(r.data.length);
+        $('#cardReorden').show();
+    });
+}
+
 // Cargar resumen
 $.getJSON(BASE_URL + '/inventario/resumen', function(r) {
     if (r.success && r.data) {
@@ -233,5 +275,5 @@ $.getJSON(BASE_URL + '/inventario/stock-bajo', function(r) {
 
 var st;
 $('#searchInv').on('keyup', function() { clearTimeout(st); st = setTimeout(function() { pi = 1; cargarInv(1); }, 400); });
-$(function() { cargarInv(1); });
+$(function() { cargarInv(1); cargarReorden(); });
 </script>

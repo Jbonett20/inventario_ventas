@@ -51,21 +51,22 @@
             <table class="table table-hover align-middle mb-0" id="tablaProductos">
                 <thead class="table-light">
                     <tr>
+                        <th style="width:50px"></th>
                         <th>Código</th>
                         <th>Descripción</th>
                         <th>Presentación</th>
                         <th>P.Compra</th>
                         <th>P.Venta</th>
                         <th>IVA</th>
-                        <th>Und</th>
-                        <th>Fracc</th>
+                        <th>Tipo Venta</th>
+                        <th>Und/Med</th>
                         <th>Stock Mín</th>
                         <th style="width:120px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyProductos">
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-5">
+                        <td colspan="11" class="text-center text-muted py-5">
                             <i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>
                             Cargando productos...
                         </td>
@@ -175,16 +176,69 @@
                             </select>
                         </div>
 
+                        <!-- Imagen del producto -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Imagen del Producto</label>
+                            <div class="d-flex align-items-center gap-3">
+                                <div id="p_imagen_preview" style="width:80px;height:80px;border:2px dashed #ddd;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;flex-shrink:0">
+                                    <i class="fas fa-camera text-muted" style="font-size:24px"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control form-control-sm" name="imagen" id="p_imagen" accept="image/png,image/jpeg,image/jpg,image/webp" onchange="previewImagen(this)">
+                                    <small class="text-muted">PNG, JPG o WEBP. Máx 2MB</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">O URL de imagen</label>
+                            <input type="text" class="form-control" name="imagen_url" id="p_imagen_url" placeholder="https://ejemplo.com/imagen.jpg" onchange="previewUrl(this.value)">
+                        </div>
+
                         <div class="col-12"><hr class="my-1"></div>
 
-                        <!-- Unidad cerrada / Fracción -->
+                        <!-- Tipo de venta -->
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Unidad Cerrada</label>
-                            <input type="number" class="form-control" name="unidad_cerrada" id="p_unidad_cerrada" value="1" min="1">
+                            <label class="form-label fw-semibold">Tipo de Venta <i class="fas fa-question-circle text-muted" title="UNIDAD: se vende en unidades enteras | CAJA: solo por caja completa | FRACCIÓN DECIMAL: se puede vender por fracción (ej: 0.5 varilla, 0.25 thinner)"></i></label>
+                            <select class="form-select" name="tipo_venta" id="p_tipo_venta" onchange="toggleTipoVenta()">
+                                <option value="UNIDAD">Unidad (entera)</option>
+                                <option value="CAJA">Caja completa</option>
+                                <option value="FRACCION_DECIMAL">Fracción decimal</option>
+                            </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Fracción</label>
-                            <input type="number" class="form-control" name="fraccion" id="p_fraccion" value="0" min="0" placeholder="0=no fraccionable">
+                        <div class="col-md-3" id="div_unidad_medida" style="display:none;">
+                            <label class="form-label fw-semibold">Unidad de Medida <i class="fas fa-question-circle text-muted" title="Ej: METRO, LITRO, KILO, VARILLA, BOTELLA, LIBRA"></i></label>
+                            <select class="form-select" name="unidad_medida" id="p_unidad_medida">
+                                <option value="">Seleccione...</option>
+                                <option value="METRO">Metro (m)</option>
+                                <option value="CENTIMETRO">Centímetro (cm)</option>
+                                <option value="LITRO">Litro (L)</option>
+                                <option value="MILILITRO">Mililitro (mL)</option>
+                                <option value="KILO">Kilo (kg)</option>
+                                <option value="LIBRA">Libra (lb)</option>
+                                <option value="GRAMO">Gramo (g)</option>
+                                <option value="VARILLA">Varilla</option>
+                                <option value="BOTELLA">Botella</option>
+                                <option value="GALON">Galón</option>
+                                <option value="UNIDAD">Unidad</option>
+                                <option value="OTRO">Otro</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3" id="div_cantidad_por_unidad" style="display:none;">
+                            <label class="form-label fw-semibold">Cantidad x Unidad <i class="fas fa-question-circle text-muted" title="¿Cuánto equivale 1 unidad? Ej: 1 varilla = 6 metros, 1 thinner = 1 litro"></i></label>
+                            <input type="number" class="form-control" name="cantidad_por_unidad" id="p_cantidad_por_unidad" value="1.0000" min="0.01" step="0.01">
+                            <small class="text-muted">1 unidad = esta cantidad</small>
+                        </div>
+
+                        <!-- Unidad cerrada / Fracción (para UNIDAD y CAJA) -->
+                        <div class="col-md-3" id="div_unidad_cerrada">
+                            <label class="form-label fw-semibold">Und por Caja <i class="fas fa-question-circle text-muted" title="¿Cuántas unidades vienen en una caja completa? Ej: 12 si cada caja trae 12 botellas"></i></label>
+                            <input type="number" class="form-control" name="unidad_cerrada" id="p_unidad_cerrada" value="1" min="1">
+                            <small class="text-muted">Cantidad de unidades que trae una caja</small>
+                        </div>
+                        <div class="col-md-3" id="div_fraccion">
+                            <label class="form-label fw-semibold">Fracción x Und <i class="fas fa-question-circle text-muted" title="¿Se puede vender en fracciones? Ej: 4 = 1 unidad se divide en 4 partes. 0 = no fraccionable"></i></label>
+                            <input type="number" class="form-control" name="fraccion" id="p_fraccion" value="0" min="0" placeholder="0 = no fraccionable">
+                            <small class="text-muted">0 = no fraccionable | 4 = ¼ por unidad</small>
                         </div>
 
                         <!-- Precios -->
@@ -203,9 +257,9 @@
                             </div>
                         </div>
 
-                        <!-- Precio unidad / Stock mínimo -->
+                        <!-- Precio unidad suelta / Stock mínimo -->
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Precio x Unidad</label>
+                            <label class="form-label fw-semibold">Precio x Und Suelta <i class="fas fa-question-circle text-muted" title="Precio para la venta de una unidad suelta (fracción). Solo aplica si el producto es fraccionable"></i></label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
                                 <input type="number" class="form-control" name="valor_unidad" id="p_valor_unidad" step="0.01" min="0">
@@ -233,6 +287,22 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ver Imagen Grande -->
+<div class="modal fade" id="modalVerImagen" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-transparent border-0">
+            <div class="text-end mb-2">
+                <button type="button" class="btn btn-sm btn-dark rounded-circle" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="text-center">
+                <img id="imgGrande" src="" style="max-width:100%;max-height:80vh;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);background:#fff;padding:10px;" alt="Imagen del producto">
+            </div>
         </div>
     </div>
 </div>
@@ -271,11 +341,57 @@ function calcularRentabilidad() {
     }
 }
 
+function toggleTipoVenta() {
+    var tipo = $('#p_tipo_venta').val();
+    if (tipo === 'FRACCION_DECIMAL') {
+        $('#div_unidad_medida').show();
+        $('#div_cantidad_por_unidad').show();
+        $('#div_unidad_cerrada').hide();
+        $('#div_fraccion').hide();
+        $('#p_valor_unidad').closest('.col-md-3').hide();
+        actualizarPreviewPresentacion();
+    } else {
+        $('#div_unidad_medida').hide();
+        $('#div_cantidad_por_unidad').hide();
+        $('#div_unidad_cerrada').show();
+        $('#div_fraccion').show();
+        $('#p_valor_unidad').closest('.col-md-3').show();
+    }
+}
+
+function actualizarPreviewPresentacion() {
+    var tipo = $('#p_tipo_venta').val();
+    if (tipo !== 'FRACCION_DECIMAL') return;
+    var und = $('#p_unidad_medida').val();
+    var cant = parseFloat($('#p_cantidad_por_unidad').val()) || 1;
+    if (und) {
+        var preview = 'X' + cant.toString().replace(/\.?0+$/, '') + ' ' + und;
+        var $pres = $('#p_presentacion');
+        if (!$pres.val() || $pres.data('auto') === '1') {
+            $pres.val(preview);
+            $pres.data('auto', '1');
+        }
+        if (!$('#previewPresentacion').length) {
+            $pres.after('<small id="previewPresentacion" class="text-muted d-block"></small>');
+        }
+        $('#previewPresentacion').html('Auto: <strong>' + preview + '</strong>');
+    }
+}
+
+$(document).on('change', '#p_unidad_medida', actualizarPreviewPresentacion);
+$(document).on('keyup', '#p_cantidad_por_unidad', actualizarPreviewPresentacion);
+$(document).on('change', '#p_cantidad_por_unidad', actualizarPreviewPresentacion);
+// Si el usuario escribe manualmente en presentación, desactivar auto
+$(document).on('keyup', '#p_presentacion', function() {
+    $(this).data('auto', '0');
+    $('#previewPresentacion').hide();
+});
+
 function cargarProductos(page, search) {
     page = page || 1;
     search = search || $('#searchProducto').val();
 
-    $('#tbodyProductos').html('<tr><td colspan="10" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
+    $('#tbodyProductos').html('<tr><td colspan="11" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
 
     $.getJSON(BASE_URL + '/productos/listar', { page: page, search: search }, function(res) {
         if (!res.success) return;
@@ -284,7 +400,7 @@ function cargarProductos(page, search) {
         var html = '';
 
         if (d.data.length === 0) {
-            html = '<tr><td colspan="10" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay productos</td></tr>';
+            html = '<tr><td colspan="11" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay productos</td></tr>';
         } else {
             $.each(d.data, function(i, p) {
                 var rentClass = 'text-success';
@@ -292,15 +408,23 @@ function cargarProductos(page, search) {
                 if (rentVal < 10) rentClass = 'text-danger';
                 else if (rentVal < 20) rentClass = 'text-warning';
 
+                var imgHtml = '';
+                if (p.imagen) {
+                    var imgSrc = p.imagen.startsWith('http') ? p.imagen : BASE_URL + '/uploads/productos/' + p.imagen;
+                    imgHtml = '<a href="javascript:void(0)" onclick="verImagenGrande(\'' + imgSrc + '\')"><img src="' + imgSrc + '" style="width:35px;height:35px;object-fit:cover;border-radius:6px;cursor:pointer" onerror="this.style.display=\'none\'" title="Click para ver grande"></a>';
+                } else {
+                    imgHtml = '<div style="width:35px;height:35px;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center"><i class="fas fa-box text-muted" style="font-size:14px"></i></div>';
+                }
                 html += '<tr>' +
+                    '<td class="text-center">' + imgHtml + '</td>' +
                     '<td><span class="badge bg-light text-dark">' + escHtml(p.codigo) + '</span></td>' +
                     '<td><strong>' + escHtml(p.descripcion) + '</strong>' + (p.presentacion ? '<br><small class="text-muted">' + escHtml(p.presentacion) + '</small>' : '') + '</td>' +
                     '<td>' + escHtml(p.presentacion || '-') + '</td>' +
                     '<td>$' + formatoNumero(p.valor_compra) + '</td>' +
                     '<td><strong>$' + formatoNumero(p.valor_venta) + '</strong></td>' +
                     '<td>' + (p.iva_valor ? p.iva_valor + '%' : '-') + '</td>' +
-                    '<td>' + (p.unidad_cerrada || 1) + '</td>' +
-                    '<td>' + (p.fraccion || 0) + '</td>' +
+                    '<td>' + getTipoVentaLabel(p.tipo_venta || 'UNIDAD') + '</td>' +
+                    '<td>' + (p.unidad_medida ? escHtml(p.unidad_medida) : (p.unidad_cerrada || 1) + ' ud') + '</td>' +
                     '<td>' + (p.stock_minimo || 1) + '</td>' +
                     '<td>' +
                         '<button class="btn btn-sm btn-outline-primary me-1" onclick="editarProducto(' + p.id_producto + ')" title="Editar"><i class="fas fa-edit"></i></button>' +
@@ -328,23 +452,67 @@ function escHtml(str) {
     return $('<div>').text(str).html();
 }
 
+function verImagenGrande(src) {
+    $('#imgGrande').attr('src', src);
+    $('#modalVerImagen').modal('show');
+}
+
 function formatoNumero(n) {
     return parseFloat(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 });
 }
 
-// Guardar producto
+function getTipoVentaLabel(tipo) {
+    var labels = {
+        'UNIDAD': '<span class="badge bg-info">Unidad</span>',
+        'CAJA': '<span class="badge bg-secondary">Caja</span>',
+        'FRACCION_DECIMAL': '<span class="badge bg-warning text-dark">Fracción</span>'
+    };
+    return labels[tipo] || '<span class="badge bg-light text-dark">' + tipo + '</span>';
+}
+
+// Vista previa de imagen
+function previewImagen(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            $('#p_imagen_preview').html('<img src="' + e.target.result + '" style="width:100%;height:100%;object-fit:cover">');
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+function previewUrl(url) {
+    if (url.trim()) {
+        $('#p_imagen_preview').html('<img src="' + url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<i class=\\\\\'fas fa-camera text-muted\\\\\' style=\\\\\'font-size:24px\\\\\'></i>\'">');
+    }
+}
+
+// Inicializar formulario al abrir modal para nuevo producto
+$('#modalProducto').on('show.bs.modal', function() {
+    $('#p_presentacion').data('auto', '0').removeAttr('data-auto');
+    $('#previewPresentacion').remove();
+    if ($('#id_producto').val() === '0') {
+        $('#p_tipo_venta').val('UNIDAD');
+        toggleTipoVenta();
+    }
+});
+
+// Guardar producto (con imagen)
 $('#formProducto').on('submit', function(e) {
     e.preventDefault();
-    var data = $(this).serializeArray().reduce(function(obj, item) {
-        obj[item.name] = item.value;
-        return obj;
-    }, {});
+    var formData = new FormData(this);
+
+    // Si hay URL de imagen y no hay archivo, usarla
+    var urlImg = $('#p_imagen_url').val().trim();
+    if (urlImg && !$('#p_imagen')[0].files.length) {
+        formData.set('imagen_url', urlImg);
+    }
 
     $.ajax({
         url: BASE_URL + '/productos/guardar',
         method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(data),
+        contentType: false,
+        processData: false,
+        data: formData,
         success: function(res) {
             if (res.success) {
                 $('#modalProducto').modal('hide');
@@ -380,6 +548,9 @@ function editarProducto(id) {
         $('#p_categoria').val(p.id_categoria || '');
         $('#p_iva').val(p.id_iva || '');
         $('#p_seccion').val(p.id_seccion || '');
+        $('#p_tipo_venta').val(p.tipo_venta || 'UNIDAD');
+        $('#p_unidad_medida').val(p.unidad_medida || '');
+        $('#p_cantidad_por_unidad').val(p.cantidad_por_unidad || 1);
         $('#p_unidad_cerrada').val(p.unidad_cerrada || 1);
         $('#p_fraccion').val(p.fraccion || 0);
         $('#p_compra').val(p.valor_compra);
@@ -387,6 +558,23 @@ function editarProducto(id) {
         $('#p_valor_unidad').val(p.valor_unidad);
         $('#p_stock_minimo').val(p.stock_minimo);
         $('#p_rentabilidad').val(p.rentabilidad);
+        // Detectar si la presentación fue auto-generada
+        var autoPres = 'X' + (parseFloat(p.cantidad_por_unidad||1)).toString().replace(/\.?0+$/, '') + ' ' + (p.unidad_medida||'');
+        if (p.presentacion === autoPres) {
+            $('#p_presentacion').data('auto', '1');
+        } else {
+            $('#p_presentacion').data('auto', '0');
+        }
+        toggleTipoVenta();
+
+        // Mostrar imagen actual
+        if (p.imagen) {
+            var imgUrl = p.imagen.startsWith('http') ? p.imagen : BASE_URL + '/uploads/productos/' + p.imagen;
+            $('#p_imagen_preview').html('<img src="' + imgUrl + '" style="width:100%;height:100%;object-fit:cover">');
+            $('#p_imagen_url').val(p.imagen);
+        } else {
+            $('#p_imagen_preview').html('<i class="fas fa-camera text-muted" style="font-size:24px"></i>');
+        }
 
         $('#modalProducto').modal('show');
     });
@@ -400,6 +588,7 @@ $('#modalProducto').on('show.bs.modal', function(e) {
         $('#id_producto').val(0);
         $('#p_unidad_cerrada').val(1);
         $('#p_stock_minimo').val(1);
+        $('#p_imagen_preview').html('<i class="fas fa-camera text-muted" style="font-size:24px"></i>');
     }
 });
 

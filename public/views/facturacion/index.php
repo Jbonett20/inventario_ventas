@@ -5,7 +5,20 @@
                 <h4 class="fw-bold mb-1"><i class="fas fa-cash-register text-primary me-2"></i>Facturación</h4>
                 <p class="text-muted mb-0">Punto de venta - Crear factura</p>
             </div>
-            <div>
+            <div class="d-flex align-items-center gap-2">
+                <?php if ($baseDiaria): ?>
+                <span class="badge bg-success bg-opacity-10 text-success p-2 px-3 rounded-pill">
+                    <i class="fas fa-piggy-bank me-1"></i>Base: $<?= number_format($baseDiaria['base'], 0, ',', '.') ?>
+                </span>
+                <?php elseif ($isCajero): ?>
+                <span class="badge bg-warning bg-opacity-10 text-warning p-2 px-3 rounded-pill" id="badgeSinBase">
+                    <i class="fas fa-exclamation-triangle me-1"></i>Sin base diaria
+                </span>
+                <?php else: ?>
+                <span class="badge bg-secondary bg-opacity-10 text-secondary p-2 px-3 rounded-pill">
+                    <i class="fas fa-piggy-bank me-1"></i>Sin base (admin)
+                </span>
+                <?php endif; ?>
                 <span class="badge bg-primary bg-opacity-10 text-primary p-2 px-3 rounded-pill me-2">
                     <i class="fas fa-calendar me-1"></i><?= date('d/m/Y') ?>
                 </span>
@@ -29,6 +42,46 @@
                     </button>
                 </div>
                 <div id="resultadosBusqueda" class="list-group mt-2" style="max-height:300px;overflow-y:auto;display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Tabla de productos (paginada) -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="fas fa-boxes text-primary me-2"></i>Productos</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted" id="infoProdPag"></small>
+                    <div class="input-group input-group-sm" style="width:200px">
+                        <span class="input-group-text bg-white"><i class="fas fa-filter fa-xs text-muted"></i></span>
+                        <input type="text" class="form-control" id="filtroProdPos" placeholder="Filtrar productos..." autocomplete="off">
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:350px;overflow-y:auto">
+                    <table class="table table-hover align-middle mb-0 table-sm">
+                        <thead class="table-light" style="position:sticky;top:0;z-index:1">
+                            <tr>
+                                <th style="width:60px">Código</th>
+                                <th>Producto</th>
+                                <th style="width:90px">Precio</th>
+                                <th style="width:70px">Stock</th>
+                                <th style="width:50px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbodyProductosPos">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="fas fa-spinner fa-spin fa-2x d-block mb-2"></i>Cargando productos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-light">
+                    <small class="text-muted" id="infoProdPagBottom"></small>
+                    <ul class="pagination pagination-sm mb-0" id="pagProductos"></ul>
+                </div>
             </div>
         </div>
 
@@ -179,6 +232,64 @@
     </div>
 </div>
 
+<!-- Modal Base Diaria -->
+<?php if ($isCajero && !$baseDiaria): ?>
+<div class="modal fade" id="modalBaseDiaria" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning bg-opacity-10">
+                <h5 class="modal-title fw-bold"><i class="fas fa-piggy-bank me-2"></i>Base Diaria</h5>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Registre la base de caja para iniciar el turno:</p>
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="inputBaseDiaria" min="0" step="1000" value="0" autofocus>
+                </div>
+                <small class="text-muted">Este monto será la base inicial de la caja para hoy.</small>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary w-100" onclick="guardarBaseDiaria()">
+                    <i class="fas fa-check me-1"></i>Iniciar Turno
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function guardarBaseDiaria() {
+    var base = parseFloat($('#inputBaseDiaria').val()) || 0;
+    if (base < 0) { PNotify.error({ text: 'La base no puede ser negativa' }); return; }
+    $.ajax({
+        url: BASE_URL+'/facturacion/base-diaria/guardar',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ base: base }),
+        success: function(r) {
+            if (r.success) {
+                $('#modalBaseDiaria').modal('hide');
+                $('#badgeSinBase').replaceWith(
+                    '<span class="badge bg-success bg-opacity-10 text-success p-2 px-3 rounded-pill">' +
+                    '<i class="fas fa-piggy-bank me-1"></i>Base: $' + formatoNumero(base) + '</span>'
+                );
+                PNotify.success({ text: 'Base diaria registrada: $' + formatoNumero(base) });
+                $('#buscarProducto').focus();
+            } else {
+                PNotify.error({ text: r.message });
+            }
+        },
+        error: function() {
+            PNotify.error({ text: 'Error al guardar base diaria' });
+        }
+    });
+}
+
+$(function() {
+    $('#modalBaseDiaria').modal('show');
+});
+</script>
+<?php endif; ?>
+
 <script>
 let carrito = [];
 let idCounter = 0;
@@ -192,58 +303,280 @@ function actualizarReloj() {
 setInterval(actualizarReloj, 1000);
 actualizarReloj();
 
-// ===== BÚSQUEDA DE PRODUCTOS =====
+// ===== DETECCIÓN DE ESCÁNER DE CÓDIGO DE BARRAS =====
+var scannerTimer;
+var scannerBuffer = '';
+var scannerLastTime = 0;
+// Si hay menos de 50ms entre teclas, es un escáner
+var SCANNER_THRESHOLD = 50;
+
+$(document).on('keydown', function(e) {
+    // Si el foco está en el input de búsqueda
+    if (!$('#buscarProducto').is(':focus')) return;
+
+    var now = Date.now();
+    var timeDiff = now - scannerLastTime;
+    scannerLastTime = now;
+
+    // Enter del escáner o manual
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        var q = $('#buscarProducto').val().trim();
+
+        if (scannerBuffer.length > 3 && timeDiff < SCANNER_THRESHOLD) {
+            // Vino de un escáner - usar buffer
+            q = scannerBuffer;
+        }
+
+        if (q.length > 0) {
+            // Buscar y agregar directamente el primer resultado
+            $.getJSON(BASE_URL+'/productos/buscar', { q: q }, function(r) {
+                if (r.success && r.data && r.data.length > 0) {
+                    var p = r.data[0];
+                    agregarAlCarrito(p.id_producto,
+                        escHtml2(p.descripcion).replace(/'/g,"\\'"),
+                        escHtml2(p.codigo_producto||p.codigo),
+                        p.valor_venta||0,
+                        p.iva_valor||0,
+                        p.fraccion||0,
+                        p.valor_unidad||0,
+                        p.unidad||0,
+                        p.tipo_venta||'UNIDAD',
+                        escHtml2(p.unidad_medida||''),
+                        p.cantidad_por_unidad||1
+                    );
+                    // Si hay más de un resultado, mostrar los demás
+                    if (r.data.length > 1) {
+                        mostrarResultadosBusqueda(r.data);
+                    }
+                } else {
+                    PNotify.error({ text: 'Producto no encontrado: ' + q });
+                }
+            });
+        }
+
+        scannerBuffer = '';
+        return;
+    }
+
+    // Detectar escáner por velocidad de tipeo
+    if (timeDiff < SCANNER_THRESHOLD && e.key.length === 1) {
+        scannerBuffer += e.key;
+    } else if (e.key.length === 1) {
+        scannerBuffer = e.key;
+    } else {
+        scannerBuffer = '';
+    }
+
+    // Reset buffer si pasa mucho tiempo sin teclear
+    clearTimeout(scannerTimer);
+    scannerTimer = setTimeout(function() { scannerBuffer = ''; }, 200);
+});
+
+// ===== BÚSQUEDA DE PRODUCTOS (manual) =====
 var timerBusqueda;
-$('#buscarProducto').on('keyup', function() {
+$('#buscarProducto').on('keyup', function(e) {
+    if (e.key === 'Enter') return; // Ya lo manejamos arriba
+
     clearTimeout(timerBusqueda);
     var q = $(this).val().trim();
     if (q.length < 1) { $('#resultadosBusqueda').hide(); return; }
     timerBusqueda = setTimeout(function() {
         $.getJSON(BASE_URL+'/productos/buscar', { q: q }, function(r) {
-            if (!r.success || !r.data.length) { $('#resultadosBusqueda').hide(); return; }
-            var html = '';
-            $.each(r.data, function(i, p) {
-                var stockClass = (p.unidad||0) <= (p.stock_minimo||0) ? 'text-danger' : 'text-muted';
-                html += '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
-                    'onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo_producto||p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_valor||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ')">' +
-                    '<div><strong>' + escHtml2(p.codigo_producto||p.codigo) + '</strong> - ' + escHtml2(p.descripcion) +
-                    (p.presentacion ? ' <small class="text-muted">' + escHtml2(p.presentacion) + '</small>' : '') +
-                    '</div><div class="text-end"><small class="' + stockClass + '">Stock: ' + (p.unidad||0) + '</small>' +
-                    '<br><strong>$' + formatoNumero(p.valor_venta) + '</strong></div></button>';
-            });
-            $('#resultadosBusqueda').html(html).show();
+            if (!r.success || !r.data || !r.data.length) { $('#resultadosBusqueda').hide(); return; }
+            mostrarResultadosBusqueda(r.data);
         });
     }, 250);
 });
 
+function mostrarResultadosBusqueda(data) {
+    var html = '';
+    $.each(data, function(i, p) {
+        var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
+        var stockVal = esDecimal
+            ? (parseFloat(p.stock_fraccion||0) > 0 ? (parseFloat(p.stock_fraccion||0)).toFixed(2) + ' ' + (p.unidad_medida||'und') : (p.unidad||0) + ' und')
+            : (p.unidad||0);
+        var stockClass = (p.unidad||0) <= (p.stock_minimo||0) ? 'text-danger' : 'text-muted';
+        html += '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
+            'onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo_producto||p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_valor||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + (p.unidad||0) + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ');$(\'#resultadosBusqueda\').hide()" title="Agregar al carrito">' +
+            '<div><strong>' + escHtml2(p.codigo_producto||p.codigo) + '</strong> - ' + escHtml2(p.descripcion) +
+            (p.presentacion ? ' <small class="text-muted">' + escHtml2(p.presentacion) + '</small>' : '') +
+            '</div><div class="text-end"><small class="' + stockClass + '">Stock: ' + stockVal + '</small>' +
+            '<br><strong>$' + formatoNumero(p.valor_venta) + '</strong></div></button>';
+    });
+    $('#resultadosBusqueda').html(html).show();
+}
+
+let prodPagina = 1;
+let prodSearch = '';
+
 function escHtml2(s) { if (!s) return ''; return $('<div>').text(s).html(); }
 function formatoNumero(n) { return parseFloat(n||0).toLocaleString('es-CO', {minimumFractionDigits:0}); }
 
+// ===== PRODUCTOS PAGINADOS =====
+function cargarProductosPos() {
+    $('#tbodyProductosPos').html('<tr><td colspan="5" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin fa-2x d-block mb-2"></i>Cargando...</td></tr>');
+    $.getJSON(BASE_URL+'/productos/listar-pos', { page: prodPagina, search: prodSearch }, function(r) {
+        if (!r.success) return;
+        var d = r.data;
+        var html = '';
+        if (!d.data.length) {
+            html = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="fas fa-box-open fa-2x d-block mb-2"></i>No hay productos</td></tr>';
+        } else {
+            $.each(d.data, function(i, p) {
+                var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
+                var stock = parseInt(p.stock_unidad) || 0;
+                var stockFrac = parseFloat(p.stock_fraccion) || 0;
+                var stockLabel;
+                var stockClass, stockIcon;
+                if (esDecimal) {
+                    // Stock decimal: mostrar fraccion (decimal) + unidades como respaldo
+                    if (stock <= 0 && stockFrac <= 0) {
+                        stockClass = 'text-danger fw-bold';
+                        stockIcon = '<i class="fas fa-times-circle text-danger me-1"></i>';
+                        stockLabel = 'AGOTADO';
+                    } else if (stock <= (parseInt(p.stock_minimo)||0)) {
+                        stockClass = 'text-warning fw-bold';
+                        stockIcon = '<i class="fas fa-exclamation-triangle text-warning me-1"></i>';
+                        stockLabel = stockFrac.toFixed(2) + (stock > 0 ? ' +' + stock + ' ud' : ' ' + (p.unidad_medida||'und'));
+                    } else {
+                        stockClass = 'text-success';
+                        stockIcon = '<i class="fas fa-check-circle text-success me-1"></i>';
+                        stockLabel = stockFrac.toFixed(2) + (stock > 0 ? ' +' + stock + ' ud' : ' ' + (p.unidad_medida||'und'));
+                    }
+                } else {
+                    stockLabel = stock;
+                    if (stockFrac > 0) stockLabel += '+' + stockFrac;
+                    if (stock <= 0) {
+                        stockClass = 'text-danger fw-bold';
+                        stockIcon = '<i class="fas fa-times-circle text-danger me-1"></i>';
+                        stockLabel = 'AGOTADO';
+                    } else if (stock <= (parseInt(p.stock_minimo)||0)) {
+                        stockClass = 'text-warning fw-bold';
+                        stockIcon = '<i class="fas fa-exclamation-triangle text-warning me-1"></i>';
+                    } else {
+                        stockClass = 'text-success';
+                        stockIcon = '<i class="fas fa-check-circle text-success me-1"></i>';
+                    }
+                }
+                var disabled = stock <= 0 ? 'disabled' : '';
+                var fracLabel = '';
+                if (p.tipo_venta === 'FRACCION_DECIMAL') {
+                    fracLabel = '<i class="fas fa-balance-scale text-warning ms-1" title="Venta por fracción decimal (' + (p.unidad_medida || 'und') + ')"></i>';
+                } else if (parseInt(p.fraccion) > 0) {
+                    fracLabel = '<i class="fas fa-cubes text-info ms-1" title="Fraccionable: ' + p.fraccion + ' und/cja"></i>';
+                } else {
+                    fracLabel = '<i class="fas fa-cube text-secondary ms-1" title="No fraccionable"></i>';
+                }
+                html += '<tr class="' + (stock <= 0 ? 'opacity-50' : '') + '">' +
+                    '<td><small class="text-muted">' + escHtml2(p.codigo) + '</small></td>' +
+                    '<td><strong>' + escHtml2(p.descripcion) + '</strong>' + fracLabel +
+                    (p.presentacion ? '<br><small class="text-muted">' + escHtml2(p.presentacion) + '</small>' : '') + '</td>' +
+                    '<td class="fw-bold">$' + formatoNumero(p.valor_venta) + '</td>' +
+                    '<td><span class="' + stockClass + '" style="font-size:12px">' + stockIcon + stockLabel + '</span></td>' +
+                    '<td><button class="btn btn-sm btn-outline-primary" ' + disabled +
+                    ' onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_porcentaje||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + stock + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ')" title="Agregar al carrito">' +
+                    '<i class="fas fa-cart-plus"></i></button></td></tr>';
+            });
+        }
+        $('#tbodyProductosPos').html(html);
+        $('#infoProdPag').text('Pág ' + d.page + ' de ' + d.totalPages + ' (' + d.total + ' prod.)');
+        $('#infoProdPagBottom').text('Página ' + d.page + ' de ' + d.totalPages + ' — ' + d.total + ' producto(s)');
+
+        // Paginación
+        var pagHtml = '';
+        if (d.totalPages > 1) {
+            pagHtml += '<li class="page-item ' + (d.page <= 1 ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="prodPagina=' + (d.page-1) + ';cargarProductosPos();return false;">&laquo;</a></li>';
+            for (var pi = Math.max(1, d.page-2); pi <= Math.min(d.totalPages, d.page+2); pi++) {
+                pagHtml += '<li class="page-item ' + (pi === d.page ? 'active' : '') + '"><a class="page-link" href="#" onclick="prodPagina=' + pi + ';cargarProductosPos();return false;">' + pi + '</a></li>';
+            }
+            pagHtml += '<li class="page-item ' + (d.page >= d.totalPages ? 'disabled' : '') + '"><a class="page-link" href="#" onclick="prodPagina=' + (d.page+1) + ';cargarProductosPos();return false;">&raquo;</a></li>';
+        }
+        $('#pagProductos').html(pagHtml);
+    });
+}
+
+// Filtro de productos en POS
+$('#filtroProdPos').on('keyup', function() {
+    prodSearch = $(this).val().trim();
+    prodPagina = 1;
+    cargarProductosPos();
+});
+
 // ===== AGREGAR AL CARRITO =====
-function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd) {
-    // Verificar si ya existe en carrito
+function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd, stockDisponible, tipoVenta, unidadMedida, cantidadPorUnidad) {
+    stockDisponible = stockDisponible || 9999;
+    tipoVenta = tipoVenta || 'UNIDAD';
+    unidadMedida = unidadMedida || '';
+    cantidadPorUnidad = cantidadPorUnidad || 1;
+
     var existente = carrito.findIndex(function(p) { return p.id_producto === id; });
-    
-    if (existente >= 0) {
-        // Incrementar cantidad
-        carrito[existente].cantidad_unidad++;
-        carrito[existente].total = (carrito[existente].cantidad_unidad * carrito[existente].precio_unitario) + 
-                                   (carrito[existente].cantidad_fraccion * (carrito[existente].valor_unidad || carrito[existente].precio_unitario));
+
+    if (tipoVenta === 'FRACCION_DECIMAL') {
+        // Producto de fracción decimal: se agrega con cantidad_decimal = 0 (el usuario ingresa el valor)
+        if (existente >= 0) {
+            // Sumar 0.5 por defecto
+            carrito[existente].cantidad_decimal = (carrito[existente].cantidad_decimal || 0) + 0.5;
+            carrito[existente].total = carrito[existente].cantidad_decimal * carrito[existente].precio_unitario;
+        } else {
+            idCounter++;
+            carrito.push({
+                idCarrito: idCounter,
+                id_producto: id,
+                descripcion: nombre,
+                codigo: codigo,
+                precio_unitario: precio,
+                valor_unidad: valorUnd || 0,
+                iva: iva || 0,
+                fraccion: fraccion || 0,
+                cantidad_unidad: 0,
+                cantidad_fraccion: 0,
+                cantidad_decimal: 0.5,
+                tipo_venta: 'FRACCION_DECIMAL',
+                unidad_medida: unidadMedida,
+                cantidad_por_unidad: cantidadPorUnidad,
+                stock_maximo: stockDisponible,
+                total: precio * 0.5
+            });
+        }
     } else {
-        idCounter++;
-        carrito.push({
-            idCarrito: idCounter,
-            id_producto: id,
-            descripcion: nombre,
-            codigo: codigo,
-            precio_unitario: precio,
-            valor_unidad: valorUnd || 0,
-            iva: iva || 0,
-            fraccion: fraccion || 0,
-            cantidad_unidad: 1,
-            cantidad_fraccion: 0,
-            total: precio
-        });
+        var enCarritoUnd = existente >= 0 ? carrito[existente].cantidad_unidad : 0;
+        var enCarritoFrac = existente >= 0 ? carrito[existente].cantidad_fraccion : 0;
+        var esFrac = parseInt(fraccion) > 0;
+
+        if (!esFrac && (enCarritoUnd + enCarritoFrac + 1 > stockDisponible)) {
+            PNotify.error({ text: 'Stock insuficiente. Disponible: ' + stockDisponible + ' unidades' });
+            return;
+        }
+        if (esFrac && (enCarritoUnd + 1 > stockDisponible)) {
+            PNotify.error({ text: 'Stock insuficiente. Disponible: ' + stockDisponible + ' cajas' });
+            return;
+        }
+
+        if (existente >= 0) {
+            carrito[existente].cantidad_unidad++;
+            carrito[existente].total = (carrito[existente].cantidad_unidad * carrito[existente].precio_unitario) + 
+                                       (carrito[existente].cantidad_fraccion * (carrito[existente].valor_unidad || carrito[existente].precio_unitario));
+        } else {
+            idCounter++;
+            carrito.push({
+                idCarrito: idCounter,
+                id_producto: id,
+                descripcion: nombre,
+                codigo: codigo,
+                precio_unitario: precio,
+                valor_unidad: valorUnd || 0,
+                iva: iva || 0,
+                fraccion: fraccion || 0,
+                cantidad_unidad: 1,
+                cantidad_fraccion: 0,
+                tipo_venta: tipoVenta,
+                unidad_medida: unidadMedida,
+                cantidad_por_unidad: cantidadPorUnidad,
+                stock_maximo: stockDisponible,
+                total: precio
+            });
+        }
     }
     
     $('#buscarProducto').val('').focus();
@@ -269,19 +602,50 @@ function actualizarCarrito() {
         $('#btnFacturarFE').prop('disabled', false);
 
         $.each(carrito, function(i, p) {
-            var sub = p.cantidad_unidad * p.precio_unitario;
+            var sub;
+            var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
+            var esFraccionable = parseInt(p.fraccion) > 0;
+
+            if (esDecimal) {
+                // Venta por fracción decimal
+                sub = (parseFloat(p.cantidad_decimal) || 0) * p.precio_unitario;
+            } else if (esFraccionable) {
+                // Fraccionable: cajas * precio_caja + unidades * precio_unidad
+                sub = (p.cantidad_unidad * p.precio_unitario) + (p.cantidad_fraccion * (parseFloat(p.valor_unidad) || p.precio_unitario));
+            } else {
+                // No fraccionable: (cajas + unidades) * precio_unitario
+                sub = (p.cantidad_unidad + p.cantidad_fraccion) * p.precio_unitario;
+            }
             var ivaV = sub * (p.iva / 100);
             var tot = sub + ivaV;
             subtotal += sub;
             totalIva += ivaV;
             total += tot;
 
+            var precioLabel = '$' + formatoNumero(p.precio_unitario);
+
+            var inputCajas, inputUnd;
+            if (esDecimal) {
+                // Input decimal único
+                var undLabel = p.unidad_medida ? ' <small class="text-muted">(' + escHtml2(p.unidad_medida) + ')</small>' : '';
+                precioLabel += undLabel;
+                inputCajas = '<input type="number" class="form-control form-control-sm" value="' + (parseFloat(p.cantidad_decimal) || 0).toFixed(4) + '" min="0" step="0.25" onchange="cambiarCantidadDecimal(' + p.idCarrito + ', this.value)">';
+                inputUnd = '<input type="text" class="form-control form-control-sm bg-light text-muted" value="—" disabled>';
+            } else {
+                inputCajas = '<input type="number" class="form-control form-control-sm" value="' + p.cantidad_unidad + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'und\')">';
+                if (esFraccionable) {
+                    inputUnd = '<input type="number" class="form-control form-control-sm" value="' + p.cantidad_fraccion + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')">';
+                } else {
+                    inputUnd = '<input type="text" class="form-control form-control-sm bg-light text-muted" value="N/A" disabled title="Producto no fraccionable">';
+                }
+            }
+
             html += '<tr>' +
                 '<td>' + (i + 1) + '</td>' +
                 '<td><strong>' + escHtml2(p.descripcion) + '</strong><br><small class="text-muted">' + p.codigo + '</small></td>' +
-                '<td><input type="number" class="form-control form-control-sm" value="' + p.cantidad_unidad + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'und\')"></td>' +
-                '<td><input type="number" class="form-control form-control-sm" value="' + p.cantidad_fraccion + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')"></td>' +
-                '<td>$' + formatoNumero(p.precio_unitario) + '</td>' +
+                '<td>' + inputCajas + '</td>' +
+                '<td>' + inputUnd + '</td>' +
+                '<td>' + precioLabel + '</td>' +
                 '<td>' + p.iva + '%</td>' +
                 '<td class="fw-bold">$' + formatoNumero(tot) + '</td>' +
                 '<td><button class="btn btn-sm btn-outline-danger" onclick="eliminarDelCarrito(' + p.idCarrito + ')"><i class="fas fa-times"></i></button></td>' +
@@ -312,11 +676,49 @@ function cambiarCantidad(id, val, tipo) {
     var item = carrito.find(function(p) { return p.idCarrito === id; });
     if (!item) return;
     val = parseInt(val) || 0;
-    if (tipo === 'und') item.cantidad_unidad = val;
-    else item.cantidad_fraccion = val;
-    if (item.cantidad_unidad <= 0 && item.cantidad_fraccion <= 0) {
-        carrito = carrito.filter(function(p) { return p.idCarrito !== id; });
+    var maxStock = item.stock_maximo || 9999;
+    var esFrac = parseInt(item.fraccion) > 0;
+
+    if (tipo === 'und') {
+        if (val > maxStock) {
+            PNotify.error({ text: 'Stock insuficiente. Disponible: ' + maxStock + (esFrac ? ' cajas' : ' unidades') });
+            actualizarCarrito();
+            return;
+        }
+        item.cantidad_unidad = val;
+    } else {
+        if (!esFrac) {
+            PNotify.error({ text: 'Este producto no es fraccionable. Use solo el campo Cajas para indicar la cantidad.' });
+            actualizarCarrito();
+            return;
+        }
+        var fracVal = parseInt(item.fraccion);
+        if (val > 0 && val % fracVal !== 0) {
+            var msg = '⚠️ Este producto usa fracciones de a <strong>' + fracVal + '</strong> unidades. ' +
+                      'No puedes vender <strong>' + val + '</strong> sueltas porque no es múltiplo de ' + fracVal + '.<br><br>' +
+                      '🔸 Ingresa un múltiplo de ' + fracVal + ' (ej: ' + (Math.ceil(val/fracVal)*fracVal) + ')<br>' +
+                      '🔸 O cambia el producto a <strong>"Fracción Decimal"</strong> en Configuración > Productos para vender cantidades exactas.';
+            PNotify.error({ text: msg, hide: false });
+            actualizarCarrito();
+            return;
+        }
+        var maxFrac = (maxStock * fracVal) - (item.cantidad_unidad * fracVal);
+        if (val > maxFrac) {
+            PNotify.error({ text: 'Stock de fracciones insuficiente. Máximo disponible: ' + maxFrac + ' unidades' });
+            actualizarCarrito();
+            return;
+        }
+        item.cantidad_fraccion = val;
     }
+    actualizarCarrito();
+}
+
+function cambiarCantidadDecimal(id, val) {
+    var item = carrito.find(function(p) { return p.idCarrito === id; });
+    if (!item) return;
+    val = parseFloat(val) || 0;
+    if (val < 0) val = 0;
+    item.cantidad_decimal = val;
     actualizarCarrito();
 }
 
@@ -378,17 +780,50 @@ $(document).on('keyup', '#descuentoValor', function() { actualizarCarrito(); });
 function facturar(tipo) {
     if (carrito.length === 0) { PNotify.error({ text: 'Carrito vacío' }); return; }
 
+    // Validar stock de todos los productos antes de enviar
+    for (var i = 0; i < carrito.length; i++) {
+        var p = carrito[i];
+        var maxStock = p.stock_maximo || 9999;
+        var esFrac = parseInt(p.fraccion) > 0;
+        var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
+
+        if (!esDecimal && esFrac && p.cantidad_fraccion > 0 && p.cantidad_fraccion % parseInt(p.fraccion) !== 0) {
+            PNotify.error({
+                text: '⚠️ <strong>' + escHtml2(p.descripcion) + '</strong> usa fracciones de a <strong>' + parseInt(p.fraccion) + '</strong> unidades.<br>' +
+                      'Tienes <strong>' + p.cantidad_fraccion + '</strong> en Und, que no es múltiplo de ' + parseInt(p.fraccion) + '.<br><br>' +
+                      '🔸 Ingresa un múltiplo de ' + parseInt(p.fraccion) + ' en Und<br>' +
+                      '🔸 O cambia el producto a <strong>"Fracción Decimal"</strong> en Productos',
+                hide: false
+            });
+            return;
+        }
+        if (!esFrac && (p.cantidad_unidad + p.cantidad_fraccion) > maxStock) {
+            PNotify.error({ text: 'Stock insuficiente de ' + p.descripcion + '. Disponible: ' + maxStock + ' unidades' });
+            return;
+        }
+        if (esFrac && p.cantidad_unidad > maxStock) {
+            PNotify.error({ text: 'Stock insuficiente de ' + p.descripcion + '. Disponible: ' + maxStock + ' cajas' });
+            return;
+        }
+    }
+
     var detalles = [];
     $.each(carrito, function(i, p) {
-        detalles.push({
+        var det = {
             id_producto: p.id_producto,
             descripcion: p.descripcion,
-            cantidad_unidad: p.cantidad_unidad,
+            cantidad_unidad: p.cantidad_unidad || 0,
             cantidad_fraccion: p.cantidad_fraccion || 0,
             precio_unitario: p.precio_unitario,
             iva: p.iva,
             fraccion: p.fraccion
-        });
+        };
+        if (p.tipo_venta === 'FRACCION_DECIMAL') {
+            det.cantidad_decimal = parseFloat(p.cantidad_decimal) || 0;
+            det.cantidad_unidad = 0;
+            det.cantidad_fraccion = 0;
+        }
+        detalles.push(det);
     });
 
     var data = {
@@ -404,7 +839,7 @@ function facturar(tipo) {
     $(btn).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Procesando...');
 
     $.ajax({
-        url: BASE_URL+BASE_URL+'/facturacion/guardar',
+        url: BASE_URL+'/facturacion/guardar',
         method: 'POST',
         contentType: 'application/json',
         data: JSON.stringify(data),
@@ -421,12 +856,13 @@ function facturar(tipo) {
                     window.open(BASE_URL+'/facturacion/pdf/' + idFactura, '_blank');
                 }
 
-                // Limpiar carrito
+                // Limpiar carrito y recargar productos
                 carrito = [];
                 idCounter = 0;
                 actualizarCarrito();
                 $('#pagoRecibido').val(0);
                 $('#lblCambio').text('$0');
+                cargarProductosPos();
                 $('#buscarProducto').focus();
             } else {
                 PNotify.error({ text: r.message });
@@ -482,8 +918,17 @@ $(document).on('keydown', function(e) {
     if (e.key === 'F8') { cambiarCliente(); }
 });
 
-// Al inicio, enfocar búsqueda
-$(function() { $('#buscarProducto').focus(); });
+// Recargar productos después de facturar
+function recargarVista() {
+    cargarProductosPos();
+    $('#buscarProducto').focus();
+}
+
+// Al inicio, cargar productos y enfocar búsqueda
+$(function() {
+    cargarProductosPos();
+    $('#buscarProducto').focus();
+});
 
 // Evitar submit con Enter en el input de búsqueda que agregue producto
 $('#buscarProducto').on('keydown', function(e) {

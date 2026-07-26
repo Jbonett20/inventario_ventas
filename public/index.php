@@ -96,12 +96,28 @@ $router->get('/logout',               'AuthController@logout');
 $router->get('/api/auth/check',       'AuthController@checkSession');
 $router->post('/api/auth/change-password', 'AuthController@changePassword', ['SIG\Middleware\AuthMiddleware']);
 
+// ---- Devoluciones ----
+$router->get('/devoluciones',               'DevolucionController@index', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/devoluciones/listar',         'DevolucionController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/devoluciones/guardar',       'DevolucionController@store', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/devoluciones/obtener/{id}',   'DevolucionController@obtener', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/devoluciones/factura/{id}',   'DevolucionController@obtenerFactura', ['SIG\Middleware\AuthMiddleware']);
+
 // ---- Dashboard ----
 $router->get('/',                     'DashboardController@index', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Balance Diario ----
+$router->get('/balance-diario',                'BalanceController@index', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/api/balance-diario/resumen',    'BalanceController@resumen', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/api/balance-diario/detalle',    'BalanceController@detalle', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/balance-diario/cerrar',        'BalanceController@cerrar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/balance-diario/exportar/pdf',   'BalanceController@exportarPdf', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/balance-diario/exportar/csv',   'BalanceController@exportarCsv', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Productos ----
 $router->get('/productos',            'ProductoController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/productos/listar',     'ProductoController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/productos/listar-pos', 'ProductoController@listarPos', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/productos/buscar',     'ProductoController@search', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/productos/obtener/{id}','ProductoController@obtener', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/productos/guardar',   'ProductoController@store', ['SIG\Middleware\AuthMiddleware']);
@@ -128,6 +144,7 @@ $router->get('/inventario/listar',    'InventarioController@listar', ['SIG\Middl
 $router->post('/inventario/ajustar',  'InventarioController@adjust', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/resumen',   'InventarioController@resumen', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/stock-bajo','InventarioController@stockBajo', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/inventario/sugerencias-reorden','InventarioController@sugerenciasReorden', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/movimientos/{id}','InventarioController@movimientos', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Ingresos ----
@@ -135,6 +152,18 @@ $router->get('/ingresos',             'IngresoController@index', ['SIG\Middlewar
 $router->get('/ingresos/listar',      'IngresoController@listar', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/guardar',    'IngresoController@store', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/ingresos/buscar-productos','IngresoController@buscarProductos', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/rapido',     'IngresoController@rapido', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Plan Separe ----
+$router->get('/plan-separe',                'PlanSepareController@index', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/plan-separe/listar',          'PlanSepareController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/plan-separe/guardar',        'PlanSepareController@store', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/plan-separe/abonar',         'PlanSepareController@abonar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/plan-separe/cancelar',       'PlanSepareController@cancelar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/plan-separe/abonos/{id}',     'PlanSepareController@abonos', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/plan-separe/obtener/{id}',    'PlanSepareController@obtener', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/plan-separe/detalle/{id}',    'PlanSepareController@obtenerConDetalle', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/plan-separe/buscar-productos','PlanSepareController@buscarProductos', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Facturación ----
 $router->get('/facturacion/historial','FacturaController@index', ['SIG\Middleware\AuthMiddleware']);
@@ -142,7 +171,10 @@ $router->get('/facturacion',          'FacturaController@index', ['SIG\Middlewar
 $router->post('/facturacion/guardar', 'FacturaController@store', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/facturacion/listar',   'FacturaController@listar', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/facturacion/obtener/{id}','FacturaController@obtener', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/facturacion/pdf/{id}', 'FacturaController@pdf', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/facturacion/anular',  'FacturaController@anular', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/facturacion/base-diaria/guardar', 'FacturaController@guardarBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/facturacion/base-diaria/obtener', 'FacturaController@obtenerBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Facturación Electrónica (API directa) ----
 // La ruta /api/facturacion-electronica se maneja desde app/api/

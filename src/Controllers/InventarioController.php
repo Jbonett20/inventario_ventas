@@ -61,6 +61,11 @@ class InventarioController
         Response::success($this->model->stockBajo());
     }
 
+    public function sugerenciasReorden(Request $r): void
+    {
+        Response::success($this->model->sugerenciasReorden());
+    }
+
     public function movimientos(Request $r): void
     {
         $id = (int)$r->param('id');

@@ -133,6 +133,27 @@
     </div>
 </div>
 
+<!-- Modal Devolución -->
+<div class="modal fade" id="modalDevolucion" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title fw-bold text-dark"><i class="fas fa-undo-alt me-2"></i>Procesar Devolución</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalleDevolucion">
+                <div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i>Cargando factura...</div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning px-4" id="btnProcesarDev" onclick="procesarDevolucion()">
+                    <i class="fas fa-check me-2"></i>Procesar Devolución
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let pf = 1;
 
@@ -175,21 +196,37 @@ function cargarFacturas() {
                 if (fac.estado === 'ANULADA') anuladas++;
 
                 var tipoBadge = fac.tipo === 'ELECTRONICA' ? 'bg-info' : 'bg-secondary';
-                var estBadge = fac.estado === 'ACTIVA' ? 'bg-success' : 'bg-danger';
+                var tieneDev = parseInt(fac.tiene_devoluciones) > 0;
+                var estBadge, estLabel;
+                if (fac.estado === 'ACTIVA' && tieneDev) {
+                    estBadge = 'bg-warning text-dark';
+                    estLabel = 'PARCIAL';
+                } else if (fac.estado === 'ACTIVA') {
+                    estBadge = 'bg-success';
+                    estLabel = 'ACTIVA';
+                } else if (tieneDev) {
+                    estBadge = 'bg-warning text-dark';
+                    estLabel = 'DEVUELTA';
+                } else {
+                    estBadge = 'bg-danger';
+                    estLabel = 'ANULADA';
+                }
                 var cufe = fac.cufe ? '<small title="' + escHtml(fac.cufe) + '">' + fac.cufe.substring(0, 10) + '...</small>' : '-';
 
-                html += '<tr class="' + (fac.estado === 'ANULADA' ? 'text-muted' : '') + '">' +
+                html += '<tr class="' + (fac.estado === 'ANULADA' || tieneDev ? 'text-muted' : '') + '">' +
                     '<td class="fw-bold">' + (fac.codigo||'') + '</td>' +
                     '<td><small>' + fac.fecha + '<br>' + (fac.hora ? fac.hora.substring(0,5) : '') + '</small></td>' +
                     '<td><small>' + escHtml(fac.cliente_nombre || '') + '</small></td>' +
                     '<td><span class="badge ' + tipoBadge + '" style="font-size:10px">' + fac.tipo + '</span></td>' +
                     '<td><small>' + fac.tipo_pago + '</small></td>' +
                     '<td class="fw-bold">$' + formatoNumero(fac.total) + '</td>' +
-                    '<td><span class="badge ' + estBadge + '" style="font-size:10px">' + fac.estado + '</span></td>' +
+                    '<td><span class="badge ' + estBadge + '" style="font-size:10px">' + estLabel + '</span></td>' +
                     '<td>' + cufe + '</td>' +
                     '<td>' +
                         '<button class="btn btn-sm btn-outline-info me-1" onclick="verDetalle(' + fac.id_factura + ')" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
-                        (fac.estado === 'ACTIVA' ? '<button class="btn btn-sm btn-outline-danger" onclick="anularFactura(' + fac.id_factura + ',' + (fac.codigo||0) + ')" title="Anular"><i class="fas fa-ban"></i></button>' : '') +
+                        (fac.estado === 'ACTIVA' && fac.tipo !== 'ELECTRONICA' ? '<button class="btn btn-sm btn-outline-warning me-1" onclick="abrirDevolucion(' + fac.id_factura + ')" title="Devolver productos"><i class="fas fa-undo-alt"></i></button>' : '') +
+                        (fac.estado === 'ACTIVA' && fac.tipo !== 'ELECTRONICA' && !tieneDev ? '<button class="btn btn-sm btn-outline-danger" onclick="anularFactura(' + fac.id_factura + ',' + (fac.codigo||0) + ')" title="Anular"><i class="fas fa-ban"></i></button>' : '') +
+                        (fac.estado === 'ACTIVA' && fac.tipo === 'ELECTRONICA' ? '<span class="badge bg-info text-white" style="font-size:10px;cursor:help" title="Las facturas electrónicas requieren Nota Crédito DIAN para anularse"><i class="fas fa-info-circle me-1"></i>FE activa</span>' : '') +
                     '</td></tr>';
             });
         }
@@ -262,6 +299,135 @@ function anularFactura(id, codigo) {
             else PNotify.error({text: r.message});
         }
     });
+    });
+}
+
+// ===== DEVOLUCIONES =====
+var devFacturaActual = 0;
+
+function abrirDevolucion(idFactura) {
+    devFacturaActual = idFactura;
+    $('#modalDevolucion').modal('show');
+    $('#detalleDevolucion').html('<div class="text-center py-3"><i class="fas fa-spinner fa-spin fa-2x"></i></div>');
+    $('#btnProcesarDev').prop('disabled', true);
+
+    $.getJSON('<?= $basePath ?>/devoluciones/factura/' + idFactura, function(r) {
+        if (!r.success) { $('#detalleDevolucion').html('<p class="text-danger">Error al cargar factura</p>'); return; }
+        var f = r.data;
+        var html = '<div class="mb-3"><strong>Factura #' + f.codigo + '</strong> - ' + f.fecha + ' - ' + escHtml(f.cliente_nombre) + '</div>' +
+            '<table class="table table-sm table-bordered"><thead><tr><th>Producto</th><th style="width:80px">Facturado</th><th style="width:80px">Devolver</th><th style="width:100px">Valor Und.</th><th style="width:100px">Subtotal</th></tr></thead><tbody>';
+        $.each(f.detalles, function(i, det) {
+            // Usar cantidad restante (considerando devoluciones previas)
+            var maxU = parseInt(det.restante_unidad) || parseInt(det.cantidad_unidad) || 0;
+            var maxF = parseInt(det.restante_fraccion) || parseInt(det.cantidad_fraccion) || 0;
+            var factU = parseInt(det.cantidad_unidad) || 0;
+            var factF = parseInt(det.cantidad_fraccion) || 0;
+            var esFraccionable = parseInt(det.fraccion) > 0;
+            if (maxU <= 0 && maxF <= 0) {
+                html += '<tr class="text-muted">' +
+                    '<td>' + escHtml(det.descripcion) + ' <span class="badge bg-secondary">Ya devuelto</span></td>' +
+                    '<td class="text-center">' + factU + (esFraccionable ? ' cja + ' + factF + ' und' : '') + '</td>' +
+                    '<td class="text-center text-muted small">Completamente devuelto</td>' +
+                    '<td></td><td></td></tr>';
+                return;
+            }
+            html += '<tr>' +
+                '<td>' + escHtml(det.descripcion) + (esFraccionable && maxF > 0 ? '<br><small class="text-muted">Restan: ' + maxU + ' cja(s), ' + maxF + ' und</small>' : '') + '</td>' +
+                '<td class="text-center">' + factU + (esFraccionable ? ' cja + ' + factF + ' und' : '') + '</td>' +
+                '<td>' +
+                    (esFraccionable ?
+                        '<div class="d-flex gap-1"><input type="number" class="form-control form-control-sm cant-dev-und" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxU + '" min="0" max="' + maxU + '" value="' + maxU + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Cj">' +
+                        '<input type="number" class="form-control form-control-sm cant-dev-frac" data-idprod="' + det.id_producto + '" data-valor="' + (det.valor_unidad||det.precio_unitario||0) + '" data-max="' + maxF + '" min="0" max="' + maxF + '" value="' + maxF + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Und"></div>' :
+                        '<input type="number" class="form-control form-control-sm cant-dev-und" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxU + '" min="0" max="' + maxU + '" value="' + maxU + '" onchange="calcularTotalDev()">'
+                    ) +
+                '</td>' +
+                '<td class="text-end">$' + formatoNumero(det.precio_unitario) + (esFraccionable && det.valor_unidad ? '<br><small class="text-muted">Und: $' + formatoNumero(det.valor_unidad) + '</small>' : '') + '</td>' +
+                '<td class="text-end"><span class="subtot-dev" data-idprod="' + det.id_producto + '">$' + formatoNumero((maxU * (det.precio_unitario||0)) + (maxF * (det.valor_unidad||det.precio_unitario||0))) + '</span></td></tr>';
+        });
+        html += '</tbody></table>' +
+            '<div class="d-flex justify-content-between align-items-center">' +
+            '<div class="mb-3"><label class="form-label fw-semibold">Motivo de la devolución <span class="text-danger">*</span></label>' +
+            '<textarea class="form-control" id="motivoDev" rows="2" placeholder="Ej: Producto defectuoso, error en la venta..."></textarea></div>' +
+            '<div class="text-end"><strong>Total a devolver: </strong><span class="fw-bold fs-5 text-danger" id="totalDev">$0</span></div></div>';
+        $('#detalleDevolucion').html(html);
+        $('#btnProcesarDev').prop('disabled', false);
+    });
+}
+
+function calcularTotalDev() {
+    var total = 0;
+    // Calcular por cada producto (unidades)
+    $('.cant-dev-und').each(function() {
+        var cant = parseInt($(this).val()) || 0;
+        var valor = parseFloat($(this).data('valor')) || 0;
+        var max = parseInt($(this).data('max')) || 0;
+        if (cant > max) { $(this).val(max); cant = max; }
+        var idProd = $(this).data('idprod');
+        // Encontrar la fracción correspondiente
+        var cantF = 0;
+        var valorF = 0;
+        $('.cant-dev-frac[data-idprod="' + idProd + '"]').each(function() {
+            cantF = parseInt($(this).val()) || 0;
+            valorF = parseFloat($(this).data('valor')) || 0;
+            var maxF = parseInt($(this).data('max')) || 0;
+            if (cantF > maxF) { $(this).val(maxF); cantF = maxF; }
+        });
+        var sub = (cant * valor) + (cantF * valorF);
+        total += sub;
+        $('.subtot-dev[data-idprod="' + idProd + '"]').text('$' + formatoNumero(sub));
+    });
+    // Productos sin fracción (solo unidad)
+    $('.cant-dev-und').not('[data-idprod]').each(function() {
+        // Ya procesados arriba
+    });
+    $('#totalDev').text('$' + formatoNumero(total));
+}
+
+function procesarDevolucion() {
+    var detalles = [];
+    var productosProcesados = {};
+    $('.cant-dev-und').each(function() {
+        var idProd = $(this).data('idprod');
+        var cantU = parseInt($(this).val()) || 0;
+        var cantF = 0;
+        $('.cant-dev-frac[data-idprod="' + idProd + '"]').each(function() {
+            cantF = parseInt($(this).val()) || 0;
+        });
+        if (cantU > 0 || cantF > 0) {
+            if (!productosProcesados[idProd]) {
+                detalles.push({
+                    id_producto: idProd,
+                    cantidad_unidad: cantU,
+                    cantidad_fraccion: cantF,
+                    valor_unitario: parseFloat($(this).data('valor')) || 0
+                });
+                productosProcesados[idProd] = true;
+            }
+        }
+    });
+    var motivo = $('#motivoDev').val().trim();
+    if (detalles.length === 0) { PNotify.error({ text: 'Debe devolver al menos un producto' }); return; }
+    if (!motivo) { PNotify.error({ text: 'Debe indicar el motivo de la devolución' }); return; }
+
+    $('#btnProcesarDev').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Procesando...');
+
+    $.ajax({
+        url: '<?= $basePath ?>/devoluciones/guardar', method: 'POST', contentType: 'application/json',
+        data: JSON.stringify({ id_factura: devFacturaActual, motivo: motivo, detalles: detalles }),
+        success: function(r) {
+            if (r.success) {
+                PNotify.success({ text: r.message });
+                $('#modalDevolucion').modal('hide');
+                cargarFacturas();
+            } else {
+                PNotify.error({ text: r.message });
+            }
+            $('#btnProcesarDev').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Procesar Devolución');
+        },
+        error: function(xhr) {
+            PNotify.error({ text: xhr.responseJSON?.message || 'Error al procesar devolución' });
+            $('#btnProcesarDev').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Procesar Devolución');
+        }
     });
 }
 

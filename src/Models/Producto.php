@@ -67,12 +67,67 @@ class Producto
     }
 
     /**
+     * Listar productos para POS (con stock e inventario incluido)
+     */
+    public function listarPos(int $page = 1, int $perPage = 25, string $search = ''): array
+    {
+        $offset = ($page - 1) * $perPage;
+
+        $where = 'WHERE p.activo = 1';
+        $params = [];
+
+        if (!empty($search)) {
+            $where .= " AND (p.codigo LIKE :search 
+                          OR p.descripcion LIKE :search2 
+                          OR p.codigo_barras_1 LIKE :search3
+                          OR p.codigo_barras_2 LIKE :search4)";
+            $params['search']  = "%{$search}%";
+            $params['search2'] = "%{$search}%";
+            $params['search3'] = "%{$search}%";
+            $params['search4'] = "%{$search}%";
+        }
+
+        $sql = "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion, 
+                       p.valor_venta, p.valor_unidad, p.id_iva,
+                       p.stock_minimo, p.fraccion, p.unidad_cerrada,
+                       p.tipo_venta, p.unidad_medida, p.cantidad_por_unidad,
+                       i.iva AS iva_porcentaje,
+                       inv.unidad AS stock_unidad, inv.fraccion AS stock_fraccion,
+                       CASE WHEN inv.unidad > 0 THEN 'disponible' ELSE 'agotado' END AS estado_stock
+                FROM vb_productos p
+                LEFT JOIN vb_ivas i ON p.id_iva = i.id_iva
+                LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
+                {$where}
+                ORDER BY p.descripcion ASC
+                LIMIT :limit OFFSET :offset";
+
+        $params['limit']  = $perPage;
+        $params['offset'] = $offset;
+
+        $productos = $this->db->select($sql, $params);
+
+        $countSql = "SELECT COUNT(*) as total FROM vb_productos p {$where}";
+        $totalParams = $params;
+        unset($totalParams['limit'], $totalParams['offset']);
+        $total = $this->db->fetchOne($countSql, $totalParams);
+
+        return [
+            'data'       => $productos,
+            'total'      => (int)($total['total'] ?? 0),
+            'page'       => $page,
+            'perPage'    => $perPage,
+            'totalPages' => max(1, ceil(($total['total'] ?? 0) / $perPage)),
+        ];
+    }
+
+    /**
      * Buscar productos para autocomplete (facturación)
      */
     public function buscar(string $query): array
     {
         $sql = "SELECT p.*, i.iva AS iva_valor,
-                       inv.unidad, inv.fraccion AS stock_fraccion
+                       inv.unidad, inv.fraccion AS stock_fraccion,
+                       p.tipo_venta, p.unidad_medida, p.cantidad_por_unidad
                 FROM vb_productos p
                 LEFT JOIN vb_ivas i ON p.id_iva = i.id_iva
                 LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
@@ -109,40 +164,66 @@ class Producto
     }
 
     /**
+     * Generar presentación automática para productos de fracción decimal
+     */
+    private function generarPresentacion(array $data): string
+    {
+        $tipoVenta = $data['tipo_venta'] ?? 'UNIDAD';
+        $presentacion = $data['presentacion'] ?? '';
+
+        if ($tipoVenta === 'FRACCION_DECIMAL' && empty($presentacion)) {
+            $umedida = $data['unidad_medida'] ?? '';
+            $cant = (float)($data['cantidad_por_unidad'] ?? 1);
+            if (!empty($umedida)) {
+                return 'X' . rtrim(rtrim(number_format($cant, 4, '.', ''), '0'), '.') . ' ' . $umedida;
+            }
+        }
+
+        return $presentacion;
+    }
+
+    /**
      * Crear un nuevo producto
      */
     public function crear(array $data): int
     {
+        $data['presentacion'] = $this->generarPresentacion($data);
         $productoId = $this->db->insert(
             "INSERT INTO vb_productos 
                 (codigo, codigo_barras_1, codigo_barras_2, codigo_barras_3,
                  descripcion, presentacion, marca, id_proveedor, id_categoria,
                  id_iva, id_seccion, unidad_cerrada, fraccion,
-                 valor_compra, valor_venta, valor_unidad, rentabilidad, stock_minimo)
+                 valor_compra, valor_venta, valor_unidad, rentabilidad, stock_minimo, imagen,
+                 tipo_venta, unidad_medida, cantidad_por_unidad)
              VALUES 
                 (:codigo, :barras1, :barras2, :barras3,
                  :descripcion, :presentacion, :marca, :proveedor, :categoria,
                  :iva, :seccion, :unidad_cerrada, :fraccion,
-                 :compra, :venta, :unidad, :rentabilidad, :stock_minimo)",
+                 :compra, :venta, :unidad, :rentabilidad, :stock_minimo, :imagen,
+                 :tipo_venta, :unidad_medida, :cantidad_por_unidad)",
             [
-                'codigo'          => $data['codigo'],
-                'barras1'         => $data['codigo_barras_1'] ?? '',
-                'barras2'         => $data['codigo_barras_2'] ?? '',
-                'barras3'         => $data['codigo_barras_3'] ?? '',
-                'descripcion'     => $data['descripcion'],
-                'presentacion'    => $data['presentacion'] ?? '',
-                'marca'           => $data['marca'] ?? '',
-                'proveedor'       => $data['id_proveedor'] ?: null,
-                'categoria'       => $data['id_categoria'] ?: null,
-                'iva'             => $data['id_iva'] ?: null,
-                'seccion'         => $data['id_seccion'] ?: null,
-                'unidad_cerrada'  => (int)($data['unidad_cerrada'] ?? 1),
-                'fraccion'        => (int)($data['fraccion'] ?? 0),
-                'compra'          => $data['valor_compra'] ?? 0,
-                'venta'           => $data['valor_venta'] ?? 0,
-                'unidad'          => $data['valor_unidad'] ?? 0,
-                'rentabilidad'    => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
-                'stock_minimo'    => (int)($data['stock_minimo'] ?? 1),
+                'codigo'             => $data['codigo'],
+                'barras1'            => $data['codigo_barras_1'] ?? '',
+                'barras2'            => $data['codigo_barras_2'] ?? '',
+                'barras3'            => $data['codigo_barras_3'] ?? '',
+                'descripcion'        => $data['descripcion'],
+                'presentacion'       => $data['presentacion'] ?? '',
+                'marca'              => $data['marca'] ?? '',
+                'proveedor'          => $data['id_proveedor'] ?: null,
+                'categoria'          => $data['id_categoria'] ?: null,
+                'iva'                => $data['id_iva'] ?: null,
+                'seccion'            => $data['id_seccion'] ?: null,
+                'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
+                'fraccion'           => (int)($data['fraccion'] ?? 0),
+                'compra'             => $data['valor_compra'] ?? 0,
+                'venta'              => $data['valor_venta'] ?? 0,
+                'unidad'             => $data['valor_unidad'] ?? 0,
+                'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
+                'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
+                'imagen'             => $data['imagen'] ?? '',
+                'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
+                'unidad_medida'      => $data['unidad_medida'] ?? '',
+                'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
             ]
         );
 
@@ -161,6 +242,7 @@ class Producto
      */
     public function actualizar(int $id, array $data): int
     {
+        $data['presentacion'] = $this->generarPresentacion($data);
         $sql = "UPDATE vb_productos SET 
                     codigo = :codigo,
                     codigo_barras_1 = :barras1,
@@ -179,29 +261,37 @@ class Producto
                     valor_venta = :venta,
                     valor_unidad = :unidad,
                     rentabilidad = :rentabilidad,
-                    stock_minimo = :stock_minimo
+                    stock_minimo = :stock_minimo,
+                    imagen = :imagen,
+                    tipo_venta = :tipo_venta,
+                    unidad_medida = :unidad_medida,
+                    cantidad_por_unidad = :cantidad_por_unidad
                 WHERE id_producto = :id";
 
         return $this->db->executeAffected($sql, [
-            'id'              => $id,
-            'codigo'          => $data['codigo'],
-            'barras1'         => $data['codigo_barras_1'] ?? '',
-            'barras2'         => $data['codigo_barras_2'] ?? '',
-            'barras3'         => $data['codigo_barras_3'] ?? '',
-            'descripcion'     => $data['descripcion'],
-            'presentacion'    => $data['presentacion'] ?? '',
-            'marca'           => $data['marca'] ?? '',
-            'proveedor'       => $data['id_proveedor'] ?: null,
-            'categoria'       => $data['id_categoria'] ?: null,
-            'iva'             => $data['id_iva'] ?: null,
-            'seccion'         => $data['id_seccion'] ?: null,
-            'unidad_cerrada'  => (int)($data['unidad_cerrada'] ?? 1),
-            'fraccion'        => (int)($data['fraccion'] ?? 0),
-            'compra'          => $data['valor_compra'] ?? 0,
-            'venta'           => $data['valor_venta'] ?? 0,
-            'unidad'          => $data['valor_unidad'] ?? 0,
-            'rentabilidad'    => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
-            'stock_minimo'    => (int)($data['stock_minimo'] ?? 1),
+            'id'                 => $id,
+            'codigo'             => $data['codigo'],
+            'barras1'            => $data['codigo_barras_1'] ?? '',
+            'barras2'            => $data['codigo_barras_2'] ?? '',
+            'barras3'            => $data['codigo_barras_3'] ?? '',
+            'descripcion'        => $data['descripcion'],
+            'presentacion'       => $data['presentacion'] ?? '',
+            'marca'              => $data['marca'] ?? '',
+            'proveedor'          => $data['id_proveedor'] ?: null,
+            'categoria'          => $data['id_categoria'] ?: null,
+            'iva'                => $data['id_iva'] ?: null,
+            'seccion'            => $data['id_seccion'] ?: null,
+            'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
+            'fraccion'           => (int)($data['fraccion'] ?? 0),
+            'compra'             => $data['valor_compra'] ?? 0,
+            'venta'              => $data['valor_venta'] ?? 0,
+            'unidad'             => $data['valor_unidad'] ?? 0,
+            'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
+            'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
+            'imagen'             => $data['imagen'] ?? '',
+            'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
+            'unidad_medida'      => $data['unidad_medida'] ?? '',
+            'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
         ]);
     }
 

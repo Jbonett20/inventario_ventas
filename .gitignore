@@ -1,0 +1,50 @@
+# ============================================
+# SIG - Sistema Integral de Gesti?n
+# .gitignore para producci?n
+# ============================================
+
+# === OpenSpec (solo desarrollo) ===
+/openspec/
+.github/skills/openspec-*/
+.github/prompts/opsx-*
+
+# === Entorno y configuraci?n local ===
+.env
+.env.local
+.env.*.local
+.phpunit.result.cache
+*.log
+
+# === Dependencias (se instalan en producci?n con composer install --no-dev) ===
+/vendor/
+
+# === Archivos temporales del sistema ===
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Uploads (subidos por usuarios, no por el repo) ===
+/public/uploads/productos/*
+!/public/uploads/productos/.gitkeep
+
+# === Logs ===
+/var/logs/*
+!/var/logs/.gitkeep
+
+# === IDE y editor ===
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# === Archivos de respaldo de scripts ===
+_check_*.php
+_seed_*.php
+_db_*.php
+_test_*.php
+*.bak

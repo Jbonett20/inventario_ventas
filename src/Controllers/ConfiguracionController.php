@@ -87,14 +87,16 @@ class ConfiguracionController
         $this->db->executeAffected(
             "UPDATE vb_empresa SET 
                 nit = :nit, nombre = :nombre, direccion = :dir,
-                telefono = :tel, email = :email
+                telefono = :tel, email = :email,
+                mostrar_fe = :mostrar_fe
              WHERE id_empresa = 1",
             [
-                'nit'    => $data['nit'] ?? '',
-                'nombre' => $data['nombre'] ?? '',
-                'dir'    => $data['direccion'] ?? '',
-                'tel'    => $data['telefono'] ?? '',
-                'email'  => $data['email'] ?? '',
+                'nit'         => $data['nit'] ?? '',
+                'nombre'      => $data['nombre'] ?? '',
+                'dir'         => $data['direccion'] ?? '',
+                'tel'         => $data['telefono'] ?? '',
+                'email'       => $data['email'] ?? '',
+                'mostrar_fe'  => !empty($data['mostrar_fe']) ? 1 : 0,
             ]
         );
 
