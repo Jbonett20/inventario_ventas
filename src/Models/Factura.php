@@ -54,14 +54,25 @@ class Factura
 
             foreach ($detalles as &$det) {
                 $producto = $this->db->fetchOne(
-                    "SELECT valor_compra, rentabilidad FROM vb_productos WHERE id_producto = :id",
+                    "SELECT valor_compra, rentabilidad, tipo_venta, cantidad_por_unidad FROM vb_productos WHERE id_producto = :id",
                     ['id' => $det['id_producto']]
                 );
 
-                $det['subtotal'] = $det['precio_unitario'] * ($det['cantidad_unidad'] + ($det['cantidad_fraccion'] / max($det['fraccion'] ?? 1, 1)));
+                $tipoVenta = $producto['tipo_venta'] ?? 'UNIDAD';
+                $det['tipo_venta'] = $tipoVenta;
+
+                if ($tipoVenta === 'FRACCION_DECIMAL') {
+                    // Venta por fracción decimal: precio * cantidad decimal
+                    $cantDec = (float)($det['cantidad_decimal'] ?? 0);
+                    $det['subtotal'] = $det['precio_unitario'] * $cantDec;
+                    $det['ganancia'] = $producto ? ($det['precio_unitario'] - $producto['valor_compra']) * $cantDec : 0;
+                } else {
+                    $det['subtotal'] = $det['precio_unitario'] * ($det['cantidad_unidad'] + ($det['cantidad_fraccion'] / max($det['fraccion'] ?? 1, 1)));
+                    $totalVendido = $det['cantidad_unidad'] + (($det['fraccion'] ?? 0) > 0 ? 0 : ($det['cantidad_fraccion'] ?? 0));
+                    $det['ganancia'] = $producto ? ($det['precio_unitario'] - $producto['valor_compra']) * $totalVendido : 0;
+                }
                 $det['iva_valor'] = $det['subtotal'] * ($det['iva'] / 100);
                 $det['total'] = $det['subtotal'] + $det['iva_valor'];
-                $det['ganancia'] = $producto ? ($det['precio_unitario'] - $producto['valor_compra']) * $det['cantidad_unidad'] : 0;
 
                 $subtotal += $det['subtotal'];
                 $totalIva += $det['iva_valor'];
@@ -107,9 +118,9 @@ class Factura
                 $this->db->insert(
                     "INSERT INTO vb_detalle_facturas
                         (id_factura, id_producto, descripcion, cantidad_unidad, cantidad_fraccion,
-                         precio_unitario, iva, iva_valor, subtotal, total)
+                         precio_unitario, iva, iva_valor, subtotal, total, cantidad_decimal)
                      VALUES
-                        (:fac, :prod, :desc, :cu, :cf, :pu, :iva, :ivav, :sub, :tot)",
+                        (:fac, :prod, :desc, :cu, :cf, :pu, :iva, :ivav, :sub, :tot, :cd)",
                     [
                         'fac'  => $idFactura,
                         'prod' => $det['id_producto'],
@@ -121,6 +132,7 @@ class Factura
                         'ivav' => $det['iva_valor'],
                         'sub'  => $det['subtotal'],
                         'tot'  => $det['total'],
+                        'cd'   => (float)($det['cantidad_decimal'] ?? 0),
                     ]
                 );
 
@@ -131,21 +143,57 @@ class Factura
                 );
 
                 if ($inv) {
-                    $nuevaUnd = max(0, (int)$inv['unidad'] - (int)$det['cantidad_unidad']);
-                    $nuevaFrac = max(0, (int)$inv['fraccion'] - (int)$det['cantidad_fraccion']);
+                    // Obtener configuración de fracción del producto
+                    $prodInv = $this->db->fetchOne(
+                        "SELECT fraccion, tipo_venta, cantidad_por_unidad FROM vb_productos WHERE id_producto = :id",
+                        ['id' => $det['id_producto']]
+                    );
+                    $tipoVentaInv = $prodInv['tipo_venta'] ?? 'UNIDAD';
+                    $fracPorUnd = (int)($prodInv['fraccion'] ?? 0);
+                    $cantUnd = (int)$det['cantidad_unidad'];
+                    $cantFrac = (int)($det['cantidad_fraccion'] ?? 0);
+                    $cantDec = (float)($det['cantidad_decimal'] ?? 0);
 
-                    // Si fracción negativa, convertir unidad
-                    if ($nuevaFrac < 0) {
-                        $producto = $this->db->fetchOne(
-                            "SELECT fraccion FROM vb_productos WHERE id_producto = :id",
-                            ['id' => $det['id_producto']]
-                        );
-                        $fracPorUnd = (int)($producto['fraccion'] ?? 1);
-                        if ($fracPorUnd > 0) {
-                            $unidadesADescontar = ceil(abs($nuevaFrac) / $fracPorUnd);
-                            $nuevaUnd = max(0, $nuevaUnd - $unidadesADescontar);
-                            $nuevaFrac = max(0, $fracPorUnd - (abs($nuevaFrac) % $fracPorUnd));
+                    if ($tipoVentaInv === 'FRACCION_DECIMAL') {
+                        // Producto con venta por fracción decimal
+                        $nuevaFrac = (float)$inv['fraccion'] - $cantDec;
+                        $nuevaUnd = (int)$inv['unidad'];
+
+                        // Si fracción queda negativa, convertir desde unidades
+                        if ($nuevaFrac < 0) {
+                            $unidadesNecesarias = ceil(abs($nuevaFrac));
+                            $nuevaUnd = max(0, $nuevaUnd - $unidadesNecesarias);
+                            $nuevaFrac = max(0, $nuevaFrac + $unidadesNecesarias);
                         }
+
+                        $nuevaUnd = max(0, $nuevaUnd);
+                        $nuevaFrac = max(0, $nuevaFrac);
+                        $movUnd = 0;
+                        $movFrac = -$cantDec;
+                    } elseif ($fracPorUnd === 0) {
+                        // Producto NO fraccionable: sumar todo como unidades completas
+                        $totalUnd = $cantUnd + $cantFrac;
+                        $nuevaUnd = max(0, (int)$inv['unidad'] - $totalUnd);
+                        $nuevaFrac = 0;
+                        $movUnd = -$totalUnd;
+                        $movFrac = 0;
+                    } else {
+                        // Producto fraccionable (unidades sueltas enteras): descontar normalmente
+                        $nuevaUnd = (int)$inv['unidad'] - $cantUnd;
+                        $nuevaFrac = (int)$inv['fraccion'] - $cantFrac;
+
+                        // Si fracción queda negativa, convertir una unidad en fracciones
+                        if ($nuevaFrac < 0 && $fracPorUnd > 0) {
+                            $unidadesADescontar = ceil(abs($nuevaFrac) / $fracPorUnd);
+                            $nuevaUnd -= $unidadesADescontar;
+                            $nuevaFrac = $fracPorUnd - (abs($nuevaFrac) % $fracPorUnd);
+                            if ($nuevaFrac >= $fracPorUnd) $nuevaFrac = 0;
+                        }
+
+                        $nuevaUnd = max(0, $nuevaUnd);
+                        $nuevaFrac = max(0, $nuevaFrac);
+                        $movUnd = -$cantUnd;
+                        $movFrac = -$cantFrac;
                     }
 
                     $this->db->executeAffected(
@@ -160,8 +208,8 @@ class Factura
                          VALUES (:id, 'EGRESO', :du, :df, :ur, :fr, :uid, NOW())",
                         [
                             'id'  => $det['id_producto'],
-                            'du'  => -(int)$det['cantidad_unidad'],
-                            'df'  => -(int)($det['cantidad_fraccion'] ?? 0),
+                            'du'  => $movUnd,
+                            'df'  => $movFrac,
                             'ur'  => $nuevaUnd,
                             'fr'  => $nuevaFrac,
                             'uid' => $idVendedor,
@@ -187,7 +235,7 @@ class Factura
     }
 
     /**
-     * Obtener factura con detalles
+     * Obtener factura con detalles (incluye cantidades restantes para devolución)
      */
     public function obtenerConDetalle(int $id): ?array
     {
@@ -206,7 +254,17 @@ class Factura
         if (!$factura) return null;
 
         $detalles = $this->db->select(
-            "SELECT d.*, p.codigo_producto, p.presentacion
+            "SELECT d.*, p.codigo, p.presentacion, p.fraccion, p.valor_unidad,
+                    GREATEST(0, d.cantidad_unidad - IFNULL(
+                        (SELECT SUM(dd.cantidad_unidad) FROM vb_devoluciones_detalle dd
+                         JOIN vb_devoluciones dev ON dd.id_devolucion = dev.id_devolucion
+                         WHERE dev.id_factura = d.id_factura AND dd.id_producto = d.id_producto), 0
+                    )) AS restante_unidad,
+                    GREATEST(0, d.cantidad_fraccion - IFNULL(
+                        (SELECT SUM(dd.cantidad_fraccion) FROM vb_devoluciones_detalle dd
+                         JOIN vb_devoluciones dev ON dd.id_devolucion = dev.id_devolucion
+                         WHERE dev.id_factura = d.id_factura AND dd.id_producto = d.id_producto), 0
+                    )) AS restante_fraccion
              FROM vb_detalle_facturas d
              LEFT JOIN vb_productos p ON d.id_producto = p.id_producto
              WHERE d.id_factura = :id
@@ -279,7 +337,8 @@ class Factura
         }
 
         $data = $this->db->select(
-            "SELECT f.*, c.nombre AS cliente_nombre, c.documento AS cliente_documento
+            "SELECT f.*, c.nombre AS cliente_nombre, c.documento AS cliente_documento,
+                    (SELECT COUNT(*) FROM vb_devoluciones dv WHERE dv.id_factura = f.id_factura) AS tiene_devoluciones
              FROM vb_facturas f
              LEFT JOIN vb_clientes c ON f.id_cliente = c.id_cliente
              {$where}
@@ -303,6 +362,7 @@ class Factura
 
     /**
      * Anular una factura (devuelve productos al inventario)
+     * Para facturas ELECTRONICA se requiere generar Nota Crédito ante la DIAN.
      */
     public function anular(int $id): void
     {
@@ -312,6 +372,14 @@ class Factura
         );
         if (!$factura) throw new \RuntimeException('Factura no encontrada o ya anulada');
 
+        // Validar factura electrónica
+        if ($factura['tipo'] === 'ELECTRONICA') {
+            throw new \RuntimeException(
+                'Las facturas electrónicas no se pueden anular directamente. ' .
+                'Debe generar una Nota Crédito desde el módulo de facturación electrónica.'
+            );
+        }
+
         $detalles = $this->db->select(
             "SELECT * FROM vb_detalle_facturas WHERE id_factura = :id", ['id' => $id]
         );
@@ -319,10 +387,19 @@ class Factura
         $this->db->beginTransaction();
         try {
             foreach ($detalles as $det) {
-                $this->db->executeAffected(
-                    "UPDATE vb_inventario SET unidad = unidad + :u, fraccion = fraccion + :f WHERE id_producto = :id",
-                    ['u' => $det['cantidad_unidad'], 'f' => $det['cantidad_fraccion'], 'id' => $det['id_producto']]
-                );
+                $cantDec = (float)($det['cantidad_decimal'] ?? 0);
+                if ($cantDec > 0) {
+                    // Producto con fracción decimal: devolver al stock fraccionado
+                    $this->db->executeAffected(
+                        "UPDATE vb_inventario SET fraccion = fraccion + :f WHERE id_producto = :id",
+                        ['f' => $cantDec, 'id' => $det['id_producto']]
+                    );
+                } else {
+                    $this->db->executeAffected(
+                        "UPDATE vb_inventario SET unidad = unidad + :u, fraccion = fraccion + :f WHERE id_producto = :id",
+                        ['u' => $det['cantidad_unidad'], 'f' => $det['cantidad_fraccion'], 'id' => $det['id_producto']]
+                    );
+                }
             }
 
             $this->db->executeAffected(

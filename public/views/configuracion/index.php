@@ -70,6 +70,17 @@
                     <label class="form-label fw-semibold">Email</label>
                     <input type="email" class="form-control" name="email" value="<?= \SIG\Core\View::esc($empresa['email'] ?? '') ?>">
                 </div>
+                <div class="col-12">
+                    <hr class="my-2">
+                    <div class="form-check form-switch form-check-lg">
+                        <input class="form-check-input" type="checkbox" name="mostrar_fe" id="chkMostrarFE" value="1" <?= ($empresa['mostrar_fe'] ?? 1) ? 'checked' : '' ?>>
+                        <label class="form-check-label fw-semibold" for="chkMostrarFE">
+                            <i class="fas fa-cloud-upload-alt text-info me-1"></i>
+                            Mostrar botón de <strong>Factura Electrónica</strong> en el POS
+                        </label>
+                        <br><small class="text-muted">Si desactivas esta opción, los usuarios no verán el botón de factura electrónica al facturar. Solo aplica si el negocio no requiere facturación electrónica DIAN.</small>
+                    </div>
+                </div>
             </div>
             <div class="mt-4">
                 <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>Guardar</button>

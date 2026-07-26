@@ -56,6 +56,9 @@ return [
         // Créditos
         'creditos.gestion'            => [0, 1, 3],
 
+        // Plan Separe
+        'plan_separe.gestion'         => [0, 1, 3],
+
         // Egresos
         'egresos.gestion'             => [0, 3],
 

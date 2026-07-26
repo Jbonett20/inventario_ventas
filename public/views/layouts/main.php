@@ -409,6 +409,15 @@
             </li>
             <?php endif; ?>
 
+            <?php if (\SIG\Middleware\RoleMiddleware::hasPermission('plan_separe.gestion')): ?>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/plan-separe" class="nav-link <?= $currentRoute === '/plan-separe' ? 'active' : '' ?>">
+                    <i class="fas fa-hand-holding-heart"></i>
+                    <span class="nav-text">Plan Separe</span>
+                </a>
+            </li>
+            <?php endif; ?>
+
             <li class="nav-divider"></li>
             <li class="nav-section-title">INVENTARIO</li>
 
@@ -477,6 +486,20 @@
                 </a>
             </li>
             <?php endif; ?>
+
+            <li class="nav-section-title">ADMINISTRACIÓN</li>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/balance-diario" class="nav-link">
+                    <i class="fas fa-balance-scale"></i>
+                    <span class="nav-text">Balance Diario</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/devoluciones" class="nav-link">
+                    <i class="fas fa-undo-alt"></i>
+                    <span class="nav-text">Devoluciones</span>
+                </a>
+            </li>
         </ul>
     </aside>
 

@@ -71,7 +71,13 @@
             width:100%; padding:13px 14px 13px 44px; border:2px solid #e8e8e8; border-radius:12px;
             font-size:14px; transition:all 0.3s; background:#f8f9fa;
         }
+        .input-group-custom input[type="password"] { padding-right:44px; }
         .input-group-custom input:focus { border-color:var(--primary); background:#fff; box-shadow:0 0 0 4px var(--primary-light); outline:none; }
+        .toggle-password {
+            position:absolute; right:14px; top:50%; transform:translateY(-50%);
+            cursor:pointer; color:#bbb; font-size:18px; z-index:1; transition:color 0.3s; background:none; border:none; padding:0; line-height:1;
+        }
+        .toggle-password:hover { color:var(--primary); }
         .btn-login {
             width:100%; padding:14px; background:linear-gradient(135deg,var(--primary),var(--primary-dark));
             color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:600;
@@ -164,6 +170,9 @@
                     <div class="input-group-custom">
                         <i class="fas fa-lock input-icon"></i>
                         <input type="password" id="clave" name="clave" placeholder="Ingrese su contraseña" required autocomplete="current-password">
+                        <button type="button" class="toggle-password" id="toggleClave" aria-label="Mostrar contraseña">
+                            <i class="fas fa-eye"></i>
+                        </button>
                     </div>
                 </div>
                 <button type="submit" class="btn-login" id="btnLogin">
@@ -180,6 +189,20 @@
     <script>
     $(function() {
         $('#usuario').focus();
+        /* Toggle visibilidad de contraseña */
+        $('#toggleClave').on('click', function() {
+            var $input = $('#clave');
+            var $icon = $(this).find('i');
+            if ($input.attr('type') === 'password') {
+                $input.attr('type', 'text');
+                $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                $(this).attr('aria-label', 'Ocultar contraseña');
+            } else {
+                $input.attr('type', 'password');
+                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                $(this).attr('aria-label', 'Mostrar contraseña');
+            }
+        });
         $('#loginForm').on('submit', function(e) {
             e.preventDefault();
             var $btn=$('#btnLogin'),$spin=$('#spinner'),$text=$('#btnText');

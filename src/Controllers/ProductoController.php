@@ -4,7 +4,9 @@ namespace SIG\Controllers;
 use SIG\Core\Request;
 use SIG\Core\Response;
 use SIG\Core\View;
+use SIG\Core\Session;
 use SIG\Models\Producto;
+use SIG\Middleware\RoleMiddleware;
 
 /**
  * Controlador de Productos
@@ -49,6 +51,18 @@ class ProductoController
     }
 
     /**
+     * API: Listar productos para POS (con stock e inventario)
+     */
+    public function listarPos(Request $request): void
+    {
+        $page   = (int)($request->get('page', 1));
+        $search = $request->get('search', '');
+        $result = $this->productoModel->listarPos($page, 25, $search);
+
+        Response::success($result);
+    }
+
+    /**
      * API: Buscar productos (autocomplete)
      */
     public function search(Request $request): void
@@ -80,6 +94,7 @@ class ProductoController
 
     /**
      * API: Guardar producto (crear o actualizar)
+     * Solo admin/superadmin pueden modificar precios
      */
     public function store(Request $request): void
     {
@@ -91,6 +106,27 @@ class ProductoController
         if (!empty($errors)) {
             Response::error('Error de validación', 422, $errors);
         }
+
+        // Restringir modificación de precios a admin/superadmin
+        $session = Session::getInstance();
+        $userTipo = $session->getUserType();
+        $puedeModificarPrecios = in_array($userTipo, [0, 3]); // admin=0, superadmin=3
+
+        if (!$puedeModificarPrecios && $id > 0) {
+            // Si es cajero/inventario, quitar precios de los datos
+            unset($data['valor_venta'], $data['valor_unidad'], $data['valor_compra']);
+        }
+
+        // Manejar carga de imagen
+        $imagen = $this->manejarImagen($id);
+        if ($imagen !== null) {
+            $data['imagen'] = $imagen;
+        }
+        // Si se envía imagen_url y no hay archivo, usarla como imagen
+        if (!empty($data['imagen_url']) && empty($_FILES['imagen']['tmp_name'])) {
+            $data['imagen'] = $data['imagen_url'];
+        }
+        unset($data['imagen_url']);
 
         try {
             if ($id > 0) {
@@ -118,6 +154,54 @@ class ProductoController
 
         $this->productoModel->eliminar($id);
         Response::success(null, 'Producto eliminado exitosamente');
+    }
+
+    /**
+     * Manejar la carga de imagen del producto
+     */
+    private function manejarImagen(int $id): ?string
+    {
+        if (empty($_FILES['imagen']['tmp_name'])) {
+            return null;
+        }
+
+        $archivo = $_FILES['imagen'];
+        $extension = strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION));
+        $permitidas = ['jpg', 'jpeg', 'png', 'webp'];
+
+        if (!in_array($extension, $permitidas)) {
+            Response::error('Tipo de imagen no permitido. Use: JPG, PNG o WEBP', 422);
+        }
+
+        if ($archivo['size'] > 2 * 1024 * 1024) {
+            Response::error('La imagen no debe superar los 2MB', 422);
+        }
+
+        $config = require __DIR__ . '/../config/app.php';
+        $uploadDir = $config['paths']['uploads'] . 'productos/';
+
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        // Eliminar imagen anterior si existe
+        if ($id > 0) {
+            $producto = $this->productoModel->obtenerPorId($id);
+            if ($producto && !empty($producto['imagen']) && !str_starts_with($producto['imagen'], 'http')) {
+                $rutaAnterior = $uploadDir . $producto['imagen'];
+                if (file_exists($rutaAnterior)) {
+                    unlink($rutaAnterior);
+                }
+            }
+        }
+
+        $nombreArchivo = 'prod_' . ($id > 0 ? $id : time()) . '_' . uniqid() . '.' . $extension;
+
+        if (move_uploaded_file($archivo['tmp_name'], $uploadDir . $nombreArchivo)) {
+            return $nombreArchivo;
+        }
+
+        return null;
     }
 
     /**

@@ -124,17 +124,48 @@ class Inventario
     }
 
     /**
-     * Productos con stock bajo
+     * Productos con stock bajo (con sugerencia de reorden)
      */
     public function stockBajo(): array
     {
-        return $this->db->select(
+        $data = $this->db->select(
             "SELECT p.*, inv.unidad, inv.fraccion AS stock_fraccion
              FROM vb_productos p
              JOIN vb_inventario inv ON p.id_producto = inv.id_producto
              WHERE p.activo = 1 AND inv.unidad <= p.stock_minimo
              ORDER BY (inv.unidad - p.stock_minimo) ASC
              LIMIT 20"
+        );
+
+        // Agregar sugerencia de reorden a cada producto
+        foreach ($data as &$item) {
+            $stockMin = (int)($item['stock_minimo'] ?? 1);
+            $unidad = (int)($item['unidad'] ?? 0);
+            $undCerrada = (int)($item['unidad_cerrada'] ?? 1);
+            $sugerido = max($stockMin * 3 - $unidad, $stockMin);
+            $item['sugerencia_reorden'] = $sugerido;
+            $item['sugerencia_cajas'] = $undCerrada > 0 ? ceil($sugerido / $undCerrada) : $sugerido;
+        }
+        unset($item);
+
+        return $data;
+    }
+
+    /**
+     * Sugerencias de reorden para todos los productos (para vista de inventario)
+     */
+    public function sugerenciasReorden(): array
+    {
+        return $this->db->select(
+            "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion,
+                    p.stock_minimo, p.unidad_cerrada,
+                    inv.unidad, inv.fraccion AS stock_fraccion,
+                    GREATEST(p.stock_minimo * 3 - COALESCE(inv.unidad, 0), p.stock_minimo) AS sugerido,
+                    CEIL(GREATEST(p.stock_minimo * 3 - COALESCE(inv.unidad, 0), p.stock_minimo) / GREATEST(p.unidad_cerrada, 1)) AS cajas_sugeridas
+             FROM vb_productos p
+             LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
+             WHERE p.activo = 1 AND COALESCE(inv.unidad, 0) <= p.stock_minimo
+             ORDER BY (COALESCE(inv.unidad, 0) - p.stock_minimo) ASC"
         );
     }
 
