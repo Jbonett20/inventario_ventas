@@ -5,6 +5,8 @@
 
 # === OpenSpec (solo desarrollo) ===
 /openspec/
+.github/skills/openspec-*/
+.github/prompts/opsx-*
 
 # === Entorno y configuraci?n local ===
 .env
