@@ -45,6 +45,14 @@ class FacturaController
         // Verificar si la empresa tiene habilitada la facturación electrónica en POS
         $empresa = $db->fetchOne("SELECT mostrar_fe FROM vb_empresa WHERE id_empresa = 1");
         $mostrarFE = ($empresa['mostrar_fe'] ?? 1) && RoleMiddleware::hasPermission('facturacion.electronica');
+
+        // Datos del usuario logueado (cobrador) para la opción "yo mismo"
+        $usuario = $db->fetchOne(
+            "SELECT nombre_usuario, COALESCE(NULLIF(nombre_completo, ''), nombre_usuario) AS nombre_completo
+             FROM vb_usuarios WHERE id_usuario = :id",
+            ['id' => $userId]
+        );
+
         return $view->render('facturacion/index', [
             'title'       => 'Facturación',
             'productos'   => $prodModel->buscar(''),
@@ -53,6 +61,11 @@ class FacturaController
             'isCajero'    => RoleMiddleware::hasRole('cajero'),
             'puedeFE'     => $mostrarFE,
             'baseDiaria'  => $baseDiaria,
+            'userId'      => $userId,
+            'usuarioNombre' => $usuario['nombre_completo'] ?? $this->session->get('username'),
+            'username'    => $this->session->get('username'),
+            'userTipo'    => $this->session->getUserType(),
+            'userImagen'  => $this->session->get('user_imagen'),
         ]);
     }
 
@@ -128,6 +141,7 @@ class FacturaController
                     'descuento'    => (float)($data['descuento'] ?? 0),
                     'pago_recibido'=> (float)($data['pago_recibido'] ?? 0),
                     'tipo'         => $data['tipo'] ?? 'NORMAL',
+                    'id_vendedor_registrado' => (int)($data['id_vendedor_registrado'] ?? 0) ?: null,
                 ],
                 $data['detalles'],
                 $this->session->getUserId()
@@ -296,6 +310,65 @@ class FacturaController
             Response::error('Error al generar PDF: ' . $e->getMessage(), 500);
         }
         exit;
+    }
+
+    /**
+     * POST /api/facturacion-electronica/enviar
+     * Emite la factura electrónica ante la DIAN vía el servicio de FE
+     */
+    public function enviarElectronica(Request $r): void
+    {
+        if (!RoleMiddleware::hasPermission('facturacion.electronica')) {
+            Response::error('No tiene permisos para emitir facturas electrónicas', 403);
+        }
+
+        $data = $r->json() ?: $r->all();
+        $idFactura = (int)($data['id_factura'] ?? 0);
+
+        if ($idFactura <= 0) {
+            Response::error('Debe indicar la factura a enviar', 422);
+        }
+
+        try {
+            $service = new \SIG\Services\FacturacionElectronicaService();
+
+            // Verificar configuración mínima antes de intentar conectar
+            $cfg = $service->getConfiguracion();
+            $requeridos = [
+                'nit'         => 'NIT',
+                'software_id' => 'Software ID',
+                'llave_api'   => 'Llave API',
+                'usuario_api' => 'Usuario API',
+            ];
+            $faltantes = [];
+            foreach ($requeridos as $clave => $etiqueta) {
+                if (empty($cfg[$clave])) {
+                    $faltantes[] = $etiqueta;
+                }
+            }
+
+            if (!empty($faltantes)) {
+                Response::error(
+                    'Falta configurar la facturación electrónica: ' . implode(', ', $faltantes) .
+                    '. Complete los datos en Configuración → Facturación Electrónica.',
+                    422
+                );
+            }
+
+            $res = $service->enviarFactura($idFactura);
+
+            if (empty($res['success'])) {
+                Response::error($res['message'] ?? 'Error al emitir la factura electrónica', 422);
+            }
+
+            Response::success([
+                'id_factura' => $idFactura,
+                'cufe'       => $res['cufe'] ?? null,
+                'qr'         => $res['qr'] ?? null,
+            ], $res['message'] ?? 'Factura electrónica emitida exitosamente');
+        } catch (\Exception $e) {
+            Response::error('Error al emitir la factura electrónica: ' . $e->getMessage(), 500);
+        }
     }
 
     public function anular(Request $r): void

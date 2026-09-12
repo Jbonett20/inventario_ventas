@@ -278,6 +278,19 @@
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
+
+                        <!-- Precio máximo regulado (medicamentos) -->
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">
+                                Precio Máximo Regulado
+                                <i class="fas fa-balance-scale text-muted" title="Tope legal de venta. Aplica a medicamentos con precio regulado (Comisión Nacional de Precios de Medicamentos). Déjelo vacío si el producto no tiene tope."></i>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" name="precio_maximo_regulado" id="p_tope" step="0.01" min="0" placeholder="Sin tope">
+                            </div>
+                            <small class="text-muted">Vacío = el producto no tiene precio regulado</small>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer bg-light">
@@ -558,6 +571,7 @@ function editarProducto(id) {
         $('#p_valor_unidad').val(p.valor_unidad);
         $('#p_stock_minimo').val(p.stock_minimo);
         $('#p_rentabilidad').val(p.rentabilidad);
+        $('#p_tope').val(p.precio_maximo_regulado || '');
         // Detectar si la presentación fue auto-generada
         var autoPres = 'X' + (parseFloat(p.cantidad_por_unidad||1)).toString().replace(/\.?0+$/, '') + ' ' + (p.unidad_medida||'');
         if (p.presentacion === autoPres) {

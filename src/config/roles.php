@@ -77,5 +77,11 @@ return [
 
         // Dashboard
         'dashboard.ver'               => [0, 1, 2, 3],
+
+        // Catálogos (categorías, secciones, tipos de IVA)
+        'catalogos.gestion'           => [0, 2, 3],
+
+        // Vendedores
+        'vendedores.gestion'          => [0, 1, 3],
     ],
 ];

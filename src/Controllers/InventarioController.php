@@ -25,6 +25,9 @@ class InventarioController
             'title' => 'Inventario',
             'resumen' => $this->model->resumen(),
             'stockBajo' => $this->model->stockBajo(),
+            'username'   => $this->session->get('username'),
+            'userTipo'   => $this->session->getUserType(),
+            'userImagen' => $this->session->get('user_imagen'),
         ]);
     }
 
@@ -69,6 +72,42 @@ class InventarioController
     public function movimientos(Request $r): void
     {
         $id = (int)$r->param('id');
-        Response::success($this->model->movimientos($id));
+        $limite = (int)$r->get('limite', 20);
+        $limite = ($limite > 0 && $limite <= 500) ? $limite : 20;
+
+        Response::success($this->model->movimientos($id, $limite));
+    }
+
+    /**
+     * Movimientos de inventario en un rango de fechas
+     * GET /inventario/movimientos-por-fecha?desde=&hasta=&tipo=&id_producto=
+     */
+    public function movimientosPorFecha(Request $r): void
+    {
+        $desde = (string)$r->get('desde', date('Y-m-01'));
+        $hasta = (string)$r->get('hasta', date('Y-m-d'));
+        $tipo  = (string)$r->get('tipo', 'TODOS');
+        $idProducto = (int)$r->get('id_producto', 0);
+
+        if (!$this->fechaValida($desde) || !$this->fechaValida($hasta)) {
+            Response::error('Las fechas no son válidas', 422);
+        }
+        if ($desde > $hasta) {
+            Response::error('La fecha inicial no puede ser mayor que la final', 422);
+        }
+
+        Response::success($this->model->movimientosPorFecha($desde, $hasta, $tipo, $idProducto));
+    }
+
+    /**
+     * Validar formato de fecha AAAA-MM-DD
+     */
+    private function fechaValida(string $fecha): bool
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            return false;
+        }
+        [$y, $m, $d] = array_map('intval', explode('-', $fecha));
+        return checkdate($m, $d, $y);
     }
 }

@@ -74,4 +74,34 @@ class DashboardController
             'capital_total'   => (float)($capitalTotal['total'] ?? 0),
         ]);
     }
+
+    /**
+     * API: Últimas ventas registradas
+     * GET /api/dashboard/ultimas-ventas?limite=5
+     */
+    public function ultimasVentas(Request $request): void
+    {
+        $limite = (int)$request->get('limite', 5);
+        $limite = ($limite > 0 && $limite <= 20) ? $limite : 5;
+
+        $facturaModel = new \SIG\Models\Factura();
+        $resultado = $facturaModel->listar(['page' => 1, 'perPage' => $limite]);
+
+        $ventas = [];
+        foreach ($resultado['data'] as $f) {
+            $ventas[] = [
+                'id_factura' => (int)$f['id_factura'],
+                'codigo'     => $f['codigo'],
+                'cliente'    => $f['cliente_nombre'] ?: 'Consumidor final',
+                'total'      => (float)$f['total'],
+                'tipo_pago'  => $f['tipo_pago'],
+                'tipo'       => $f['tipo'],
+                'fecha'      => $f['fecha'],
+                'hora'       => $f['hora'],
+                'estado'     => $f['estado'],
+            ];
+        }
+
+        Response::success(['ventas' => $ventas, 'total' => $resultado['total']]);
+    }
 }

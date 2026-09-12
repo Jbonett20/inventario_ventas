@@ -18,7 +18,7 @@
         <div class="error-code">404</div>
         <h2 class="fw-bold">Página no encontrada</h2>
         <p class="error-message">La ruta solicitada no existe en el sistema.</p>
-        <a href="/misproyectos/inventario_ventas/public/" class="btn btn-primary btn-lg">
+        <a href="/misproyectos/entorno/inventario_ventas/public/" class="btn btn-primary btn-lg">
             <i class="fas fa-home me-2"></i>Ir al inicio
         </a>
     </div>

@@ -143,6 +143,41 @@
             </div>
         </div>
 
+        <!-- Vendedor -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="fw-bold mb-0"><i class="fas fa-user-tie me-2"></i>Vendedor <small class="text-muted fw-normal">(F9)</small></h6>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleVendedorVenta()" title="Cambiar vendedor">
+                        <i class="fas fa-exchange-alt"></i>
+                    </button>
+                </div>
+
+                <div class="p-3 bg-light rounded-3" id="vendedorInfo">
+                    <input type="hidden" id="id_vendedor_registrado" value="">
+                    <strong id="vendedorNombre">Yo mismo (<?= \SIG\Core\View::esc($usuarioNombre ?? '') ?>)</strong>
+                    <br><small class="text-muted" id="vendedorDetalle">Venta a nombre del usuario en caja</small>
+                </div>
+
+                <div class="mt-2" id="panelVendedorVenta" style="display:none;">
+                    <div class="d-flex gap-2 mb-2">
+                        <label class="btn btn-outline-primary btn-sm rounded-pill active flex-grow-1">
+                            <input type="radio" name="tipoVendedor" value="MISMO" checked class="d-none" onchange="cambiarTipoVendedor(this)">
+                            <i class="fas fa-user me-1"></i>Yo mismo
+                        </label>
+                        <label class="btn btn-outline-primary btn-sm rounded-pill flex-grow-1">
+                            <input type="radio" name="tipoVendedor" value="REGISTRADO" class="d-none" onchange="cambiarTipoVendedor(this)">
+                            <i class="fas fa-user-tie me-1"></i>Vendedor registrado
+                        </label>
+                    </div>
+                    <div id="busquedaVendedor" style="display:none;">
+                        <input type="text" class="form-control form-control-sm" id="buscarVendedor" placeholder="Buscar por cédula, código o nombre...">
+                        <div id="resultadosVendedores" class="list-group mt-1" style="max-height:150px;overflow-y:auto;display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Totales -->
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body">
@@ -765,6 +800,94 @@ function seleccionarCliente(id, nombre, tipoDoc, doc) {
     $('#buscarCliente').val('');
 }
 
+// ===== VENDEDOR DE LA VENTA =====
+// Por defecto la venta queda a nombre del usuario logueado (caja).
+// Opcionalmente se puede asignar a un vendedor registrado.
+var usuarioCajaNombre = <?= json_encode($usuarioNombre ?? 'Usuario') ?>;
+var timerVendPos = null;
+
+function toggleVendedorVenta() {
+    // Si ya está abierto, cerrar
+    if ($('#panelVendedorVenta').is(':visible')) {
+        $('#panelVendedorVenta').hide();
+        return;
+    }
+
+    // Sincronizar el modo con el vendedor asignado actualmente
+    var asignado = parseInt($('#id_vendedor_registrado').val()) > 0;
+    var modo = asignado ? 'REGISTRADO' : 'MISMO';
+
+    $('input[name="tipoVendedor"][value="' + modo + '"]')
+        .prop('checked', true)
+        .closest('label').addClass('active')
+        .siblings().removeClass('active');
+
+    $('#busquedaVendedor').toggle(asignado);
+    $('#panelVendedorVenta').show();
+
+    if (asignado) {
+        $('#buscarVendedor').focus();
+    }
+}
+
+function cambiarTipoVendedor(el) {
+    $(el).closest('label').addClass('active').siblings().removeClass('active');
+
+    if ($(el).val() === 'REGISTRADO') {
+        $('#busquedaVendedor').show();
+        $('#buscarVendedor').focus();
+    } else {
+        $('#busquedaVendedor').hide();
+        $('#resultadosVendedores').hide();
+        $('#buscarVendedor').val('');
+        resetVendedorVenta();
+    }
+}
+
+function resetVendedorVenta() {
+    $('#id_vendedor_registrado').val('');
+    $('#vendedorNombre').text('Yo mismo (' + usuarioCajaNombre + ')');
+    $('#vendedorDetalle').text('Venta a nombre del usuario en caja');
+    $('#vendedorInfo').removeClass('border border-primary');
+}
+
+$('#buscarVendedor').on('input', function() {
+    var q = $(this).val().trim();
+    if (q.length < 2) { $('#resultadosVendedores').hide(); return; }
+
+    clearTimeout(timerVendPos);
+    timerVendPos = setTimeout(function() {
+        $.getJSON(BASE_URL + '/vendedores/buscar', { q: q }, function(r) {
+            if (!r.success || !r.data.length) {
+                $('#resultadosVendedores').html('<div class="list-group-item text-muted small">Sin resultados</div>').show();
+                return;
+            }
+            var html = '';
+            $.each(r.data, function(i, v) {
+                var com = parseFloat(v.comision) || 0;
+                html += '<button type="button" class="list-group-item list-group-item-action py-2" onclick="seleccionarVendedor(' + v.id_vendedor + ',\'' +
+                    escHtml2(v.nombre).replace(/'/g, "\\'") + '\',\'' + escHtml2(v.codigo) + '\',\'' + escHtml2(v.cedula || '') + '\',' + com + ')">' +
+                    '<strong>' + escHtml2(v.nombre) + '</strong> <span class="badge bg-light text-dark">' + escHtml2(v.codigo) + '</span>' +
+                    (v.cedula ? '<br><small class="text-muted">CC: ' + escHtml2(v.cedula) + '</small>' : '') +
+                    ' <small class="text-muted">· Comisión ' + com + '%</small></button>';
+            });
+            $('#resultadosVendedores').html(html).show();
+        });
+    }, 300);
+});
+
+function seleccionarVendedor(id, nombre, codigo, cedula, comision) {
+    $('#id_vendedor_registrado').val(id);
+    $('#vendedorNombre').text(nombre);
+    $('#vendedorDetalle').text(codigo + (cedula ? ' · CC: ' + cedula : '') + ' · Comisión ' + comision + '%');
+    $('#vendedorInfo').addClass('border border-primary');
+    $('#resultadosVendedores').hide();
+    $('#buscarVendedor').val('');
+    $('#busquedaVendedor').hide();
+    $('#panelVendedorVenta').hide();
+    PNotify.success({ text: 'Venta asignada a ' + nombre });
+}
+
 // ===== DESCUENTO (admin) =====
 var descuentoVisible = false;
 function toggleDescuento() {
@@ -832,6 +955,7 @@ function facturar(tipo) {
         pago_recibido: parseFloat($('#pagoRecibido').val()) || 0,
         descuento: parseFloat($('#descuentoValor').val()) || 0,
         tipo: tipo,
+        id_vendedor_registrado: parseInt($('#id_vendedor_registrado').val()) || null,
         detalles: detalles
     };
 
@@ -860,6 +984,7 @@ function facturar(tipo) {
                 carrito = [];
                 idCounter = 0;
                 actualizarCarrito();
+                resetVendedorVenta();
                 $('#pagoRecibido').val(0);
                 $('#lblCambio').text('$0');
                 cargarProductosPos();
@@ -916,6 +1041,7 @@ $(document).on('keydown', function(e) {
     if (e.key === 'F4') { e.preventDefault(); $('#pagoRecibido').focus().select(); }
     if (e.key === 'Escape') { carrito = []; actualizarCarrito(); }
     if (e.key === 'F8') { cambiarCliente(); }
+    if (e.key === 'F9') { e.preventDefault(); toggleVendedorVenta(); }
 });
 
 // Recargar productos después de facturar

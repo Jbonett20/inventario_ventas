@@ -457,6 +457,24 @@
             </li>
             <?php endif; ?>
 
+            <?php if (\SIG\Middleware\RoleMiddleware::hasPermission('vendedores.gestion')): ?>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/vendedores" class="nav-link">
+                    <i class="fas fa-user-tie"></i>
+                    <span class="nav-text">Vendedores</span>
+                </a>
+            </li>
+            <?php endif; ?>
+
+            <?php if (\SIG\Middleware\RoleMiddleware::hasPermission('catalogos.gestion')): ?>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/catalogos" class="nav-link">
+                    <i class="fas fa-tags"></i>
+                    <span class="nav-text">Catálogos</span>
+                </a>
+            </li>
+            <?php endif; ?>
+
             <li class="nav-divider"></li>
             <li class="nav-section-title">ADMINISTRACIÓN</li>
 
