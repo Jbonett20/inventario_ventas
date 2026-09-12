@@ -1,20 +1,29 @@
+# ============================================================
+# SIG - inventario_ventas (raiz del proyecto)
+# El DocumentRoot real de la aplicacion es /public/
+# ============================================================
+
 RewriteEngine On
-RewriteBase /misproyectos/inventario_ventas/
+RewriteBase /misproyectos/entorno/inventario_ventas/
 
-# Redirigir todo a /public/ menos si ya está en /public/
-RewriteCond %{REQUEST_URI} !^/misproyectos/inventario_ventas/public/
-RewriteRule ^(.*)$ public/$1 [L,QSA]
-
-# Si es la raíz exacta, redirigir a public/
-RewriteRule ^$ public/ [L,R=301]
-
-# Seguridad: Denegar acceso directo a carpetas sensibles
-RewriteRule ^src/ - [F,L]
-RewriteRule ^vendor/ - [F,L]
-RewriteRule ^sql/ - [F,L]
-RewriteRule ^app/ - [F,L]
+# ---- Seguridad: denegar acceso directo a carpetas sensibles ----
+RewriteRule ^(src|vendor|sql|app|var)/ - [F,L]
 RewriteRule ^\.env - [F,L]
-RewriteRule ^composer\.(json|lock) - [F,L]
+RewriteRule ^composer\.(json|lock)$ - [F,L]
+RewriteRule ^README\.md$ - [F,L]
+
+# ---- Raiz del proyecto -> DocumentRoot real (/public/) ----
+RewriteRule ^$ public/ [R=301,L]
+
+# ---- No reescribir nada que ya este dentro de /public/ ----
+RewriteCond %{REQUEST_URI} !^/misproyectos/entorno/inventario_ventas/public/ [NC]
+
+# ---- No reescribir archivos/carpetas reales (ej. index.html) ----
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# ---- Todo lo demas se sirve desde /public/ ----
+RewriteRule ^(.*)$ public/$1 [L,QSA]
 
 # Denegar listado de directorios
 Options -Indexes

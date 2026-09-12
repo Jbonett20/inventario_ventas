@@ -193,13 +193,13 @@ class Producto
                 (codigo, codigo_barras_1, codigo_barras_2, codigo_barras_3,
                  descripcion, presentacion, marca, id_proveedor, id_categoria,
                  id_iva, id_seccion, unidad_cerrada, fraccion,
-                 valor_compra, valor_venta, valor_unidad, rentabilidad, stock_minimo, imagen,
+                 valor_compra, valor_venta, valor_unidad, precio_maximo_regulado, rentabilidad, stock_minimo, imagen,
                  tipo_venta, unidad_medida, cantidad_por_unidad)
              VALUES 
                 (:codigo, :barras1, :barras2, :barras3,
                  :descripcion, :presentacion, :marca, :proveedor, :categoria,
                  :iva, :seccion, :unidad_cerrada, :fraccion,
-                 :compra, :venta, :unidad, :rentabilidad, :stock_minimo, :imagen,
+                 :compra, :venta, :unidad, :tope, :rentabilidad, :stock_minimo, :imagen,
                  :tipo_venta, :unidad_medida, :cantidad_por_unidad)",
             [
                 'codigo'             => $data['codigo'],
@@ -218,6 +218,8 @@ class Producto
                 'compra'             => $data['valor_compra'] ?? 0,
                 'venta'              => $data['valor_venta'] ?? 0,
                 'unidad'             => $data['valor_unidad'] ?? 0,
+                'tope'               => (isset($data['precio_maximo_regulado']) && $data['precio_maximo_regulado'] !== '' && $data['precio_maximo_regulado'] !== null)
+                                            ? (float)$data['precio_maximo_regulado'] : null,
                 'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
                 'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
                 'imagen'             => $data['imagen'] ?? '',
@@ -239,10 +241,33 @@ class Producto
 
     /**
      * Actualizar un producto
+     *
+     * Importante: si $data NO trae los precios (por ejemplo cuando un cajero
+     * edita solo la descripción), se conservan los que ya tenía el producto.
+     * Antes se sobrescribían con 0 y el producto quedaba en $0.
      */
-    public function actualizar(int $id, array $data): int
+    public function actualizar(int $id, array $data, ?int $idUsuario = null): int
     {
         $data['presentacion'] = $this->generarPresentacion($data);
+
+        // Valores anteriores: sirven para conservar precios y para la trazabilidad
+        $antes = $this->db->fetchOne(
+            "SELECT valor_compra, valor_venta, valor_unidad, rentabilidad, precio_maximo_regulado
+             FROM vb_productos WHERE id_producto = :id",
+            ['id' => $id]
+        ) ?: [];
+
+        $compra = (array_key_exists('valor_compra', $data) && $data['valor_compra'] !== '' && $data['valor_compra'] !== null)
+            ? (float)$data['valor_compra'] : (float)($antes['valor_compra'] ?? 0);
+        $venta = (array_key_exists('valor_venta', $data) && $data['valor_venta'] !== '' && $data['valor_venta'] !== null)
+            ? (float)$data['valor_venta'] : (float)($antes['valor_venta'] ?? 0);
+        $unidad = (array_key_exists('valor_unidad', $data) && $data['valor_unidad'] !== '' && $data['valor_unidad'] !== null)
+            ? (float)$data['valor_unidad'] : (float)($antes['valor_unidad'] ?? 0);
+
+        $tope = (array_key_exists('precio_maximo_regulado', $data) && $data['precio_maximo_regulado'] !== '' && $data['precio_maximo_regulado'] !== null)
+            ? (float)$data['precio_maximo_regulado']
+            : ($antes['precio_maximo_regulado'] ?? null);
+
         $sql = "UPDATE vb_productos SET 
                     codigo = :codigo,
                     codigo_barras_1 = :barras1,
@@ -261,6 +286,7 @@ class Producto
                     valor_venta = :venta,
                     valor_unidad = :unidad,
                     rentabilidad = :rentabilidad,
+                    precio_maximo_regulado = :tope,
                     stock_minimo = :stock_minimo,
                     imagen = :imagen,
                     tipo_venta = :tipo_venta,
@@ -268,7 +294,7 @@ class Producto
                     cantidad_por_unidad = :cantidad_por_unidad
                 WHERE id_producto = :id";
 
-        return $this->db->executeAffected($sql, [
+        $afectados = $this->db->executeAffected($sql, [
             'id'                 => $id,
             'codigo'             => $data['codigo'],
             'barras1'            => $data['codigo_barras_1'] ?? '',
@@ -283,16 +309,43 @@ class Producto
             'seccion'            => $data['id_seccion'] ?: null,
             'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
             'fraccion'           => (int)($data['fraccion'] ?? 0),
-            'compra'             => $data['valor_compra'] ?? 0,
-            'venta'              => $data['valor_venta'] ?? 0,
-            'unidad'             => $data['valor_unidad'] ?? 0,
-            'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
+            'compra'             => $compra,
+            'venta'              => $venta,
+            'unidad'             => $unidad,
+            'rentabilidad'       => $this->calcularRentabilidad($compra, $venta),
+            'tope'               => $tope,
             'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
             'imagen'             => $data['imagen'] ?? '',
             'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
             'unidad_medida'      => $data['unidad_medida'] ?? '',
             'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
         ]);
+
+        // Trazabilidad: si el admin cambió algún precio, queda registrado para siempre
+        $cambioCosto  = abs($compra - (float)($antes['valor_compra'] ?? 0)) >= 0.01;
+        $cambioVenta  = abs($venta - (float)($antes['valor_venta'] ?? 0)) >= 0.01;
+        $cambioUnidad = abs($unidad - (float)($antes['valor_unidad'] ?? 0)) >= 0.01;
+
+        if ($cambioCosto || $cambioVenta || $cambioUnidad) {
+            (new Ingreso())->registrarHistorial([
+                'id_producto'            => $id,
+                'origen'                 => 'EDICION_PRODUCTO',
+                'id_referencia'          => null,
+                'cantidad'               => 0,
+                'precio_compra'          => $cambioCosto ? $compra : null,
+                'costo_anterior'         => (float)($antes['valor_compra'] ?? 0),
+                'costo_nuevo'            => $compra,
+                'precio_venta_anterior'  => (float)($antes['valor_venta'] ?? 0),
+                'precio_venta_nuevo'     => $venta,
+                'precio_unidad_anterior' => (float)($antes['valor_unidad'] ?? 0),
+                'precio_unidad_nuevo'    => $unidad,
+                'rentabilidad'           => $this->calcularRentabilidad($compra, $venta),
+                'motivo'                 => $data['motivo_precio'] ?? 'Cambio manual desde Productos',
+                'id_usuario'             => $idUsuario,
+            ]);
+        }
+
+        return $afectados;
     }
 
     /**

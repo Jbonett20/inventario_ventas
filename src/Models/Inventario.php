@@ -25,7 +25,14 @@ class Inventario
 
         $sql = "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion, p.fraccion,
                        p.valor_compra, p.valor_venta, p.valor_unidad, p.stock_minimo, p.unidad_cerrada,
+                       p.precio_maximo_regulado,
                        inv.id_inventario, inv.unidad, inv.fraccion AS stock_fraccion,
+                       (SELECT i.valor_compra FROM vb_ingresos i
+                         WHERE i.id_producto = p.id_producto AND i.valor_compra IS NOT NULL AND i.valor_compra > 0
+                         ORDER BY i.fecha ASC, i.id_ingreso ASC LIMIT 1) AS costo_primera_compra,
+                       (SELECT i.valor_compra FROM vb_ingresos i
+                         WHERE i.id_producto = p.id_producto AND i.valor_compra IS NOT NULL AND i.valor_compra > 0
+                         ORDER BY i.fecha DESC, i.id_ingreso DESC LIMIT 1) AS costo_ultima_compra,
                        (inv.unidad - CASE WHEN inv.fraccion >= p.fraccion AND p.fraccion > 0 
                             THEN FLOOR(inv.fraccion / p.fraccion) ELSE 0 END) AS diferenciaU,
                        CASE WHEN p.fraccion > 0 THEN inv.fraccion % p.fraccion ELSE 0 END AS diferenciaF
@@ -183,5 +190,76 @@ class Inventario
              LIMIT :lim",
             ['id' => $idProducto, 'lim' => $limit]
         );
+    }
+
+    /**
+     * Movimientos de inventario en un rango de fechas, con totales
+     *
+     * @param string $tipo TODOS | INGRESO | EGRESO | AJUSTE | DEVOLUCION
+     */
+    public function movimientosPorFecha(string $desde, string $hasta, string $tipo = 'TODOS', int $idProducto = 0): array
+    {
+        $where  = ['DATE(m.created_at) BETWEEN :desde AND :hasta'];
+        $params = ['desde' => $desde, 'hasta' => $hasta];
+
+        if (in_array($tipo, ['INGRESO', 'EGRESO', 'AJUSTE', 'DEVOLUCION'], true)) {
+            $where[] = 'm.tipo = :tipo';
+            $params['tipo'] = $tipo;
+        }
+
+        if ($idProducto > 0) {
+            $where[] = 'm.id_producto = :idp';
+            $params['idp'] = $idProducto;
+        }
+
+        $sqlWhere = 'WHERE ' . implode(' AND ', $where);
+
+        $rows = $this->db->select(
+            "SELECT m.*, p.codigo, p.descripcion, p.presentacion, p.unidad_cerrada,
+                    p.valor_compra, p.valor_venta, u.nombre_usuario
+             FROM vb_movimientos_inventario m
+             JOIN vb_productos p ON m.id_producto = p.id_producto
+             LEFT JOIN vb_usuarios u ON m.id_usuario = u.id_usuario
+             {$sqlWhere}
+             ORDER BY m.created_at DESC, m.id_movimiento DESC
+             LIMIT 1000",
+            $params
+        );
+
+        $totales = [
+            'registros' => count($rows),
+            'unidad'    => 0,
+            'fraccion'  => 0,
+            'valor'     => 0.0,
+            'porTipo'   => [],
+        ];
+
+        foreach ($rows as $r) {
+            $u = (int)$r['unidad'];
+            $f = (int)$r['fraccion'];
+            $undCerrada = max(1, (int)($r['unidad_cerrada'] ?? 1));
+            $valorCompra = (float)($r['valor_compra'] ?? 0);
+
+            $totales['unidad']   += $u;
+            $totales['fraccion'] += $f;
+            $totales['valor']    += $u * $valorCompra + $f * ($valorCompra / $undCerrada);
+
+            $t = (string)$r['tipo'];
+            if (!isset($totales['porTipo'][$t])) {
+                $totales['porTipo'][$t] = ['registros' => 0, 'unidad' => 0, 'fraccion' => 0];
+            }
+            $totales['porTipo'][$t]['registros']++;
+            $totales['porTipo'][$t]['unidad']   += $u;
+            $totales['porTipo'][$t]['fraccion'] += $f;
+        }
+
+        $totales['valor'] = round($totales['valor'], 2);
+
+        return [
+            'data'    => $rows,
+            'desde'   => $desde,
+            'hasta'   => $hasta,
+            'totales' => $totales,
+        ];
     }
 }

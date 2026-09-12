@@ -357,6 +357,24 @@ END
 $$
 DELIMITER ;
 DELIMITER $$
+CREATE TRIGGER `trg_ingreso_stock` AFTER INSERT ON `vb_ingresos` FOR EACH ROW BEGIN
+    DECLARE v_fraccion INT DEFAULT 0;
+    DECLARE v_unidad_cerrada INT DEFAULT 1;
+
+    SELECT `fraccion`, `unidad_cerrada` INTO v_fraccion, v_unidad_cerrada
+    FROM `vb_productos` WHERE `id_producto` = NEW.id_producto;
+
+    UPDATE `vb_inventario`
+    SET
+        `unidad` = `unidad` + NEW.cantidad_unidad,
+        `fraccion` = `fraccion` + NEW.cantidad_fraccion
+    WHERE `id_producto` = NEW.id_producto;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+-- Se crea DESPUES de trg_ingreso_stock para que lea el stock ya actualizado.
+-- Ver sql/migrations/2026-09-12_fix_triggers_orden.sql
 CREATE TRIGGER `trg_ingreso_movimiento` AFTER INSERT ON `vb_ingresos` FOR EACH ROW BEGIN
     INSERT INTO `vb_movimientos_inventario`
         (`id_producto`, `tipo`, `unidad`, `fraccion`, `unidad_resultante`, `fraccion_resultante`, `observacion`, `id_usuario`, `created_at`)
@@ -364,22 +382,6 @@ CREATE TRIGGER `trg_ingreso_movimiento` AFTER INSERT ON `vb_ingresos` FOR EACH R
         NEW.id_producto, 'INGRESO', NEW.cantidad_unidad, NEW.cantidad_fraccion,
         `unidad`, `fraccion`, NEW.observacion, NEW.id_usuario, NOW()
     FROM `vb_inventario` WHERE `id_producto` = NEW.id_producto;
-END
-$$
-DELIMITER ;
-DELIMITER $$
-CREATE TRIGGER `trg_ingreso_stock` AFTER INSERT ON `vb_ingresos` FOR EACH ROW BEGIN
-    DECLARE v_fraccion INT DEFAULT 0;
-    DECLARE v_unidad_cerrada INT DEFAULT 1;
-    
-    SELECT `fraccion`, `unidad_cerrada` INTO v_fraccion, v_unidad_cerrada
-    FROM `vb_productos` WHERE `id_producto` = NEW.id_producto;
-    
-    UPDATE `vb_inventario`
-    SET
-        `unidad` = `unidad` + NEW.cantidad_unidad,
-        `fraccion` = `fraccion` + NEW.cantidad_fraccion
-    WHERE `id_producto` = NEW.id_producto;
 END
 $$
 DELIMITER ;

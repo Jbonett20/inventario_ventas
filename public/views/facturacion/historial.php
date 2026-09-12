@@ -99,12 +99,12 @@
             <table class="table table-hover align-middle mb-0" id="tablaFacturas">
                 <thead class="table-light">
                     <tr>
-                        <th>#</th><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>Pago</th>
+                        <th>#</th><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Tipo</th><th>Pago</th>
                         <th>Total</th><th>Estado</th><th>CUFE</th><th style="width:90px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyFacturas">
-                    <tr><td colspan="9" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
+                    <tr><td colspan="10" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -178,7 +178,7 @@ function getFiltros() {
 function cargarFacturas() {
     pf = 1;
     var f = getFiltros();
-    $('#tbodyFacturas').html('<tr><td colspan="9" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
+    $('#tbodyFacturas').html('<tr><td colspan="10" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
 
     $.getJSON('<?= $basePath ?>/facturacion/listar', f, function(r) {
         if (!r.success) return;
@@ -186,7 +186,7 @@ function cargarFacturas() {
         var total = 0, cantFE = 0, totalEf = 0, ganancia = 0, anuladas = 0;
 
         if (!d.data.length) {
-            html = '<tr><td colspan="9" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas</td></tr>';
+            html = '<tr><td colspan="10" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas</td></tr>';
         } else {
             $.each(d.data, function(i, fac) {
                 total += parseFloat(fac.total) || 0;
@@ -217,6 +217,9 @@ function cargarFacturas() {
                     '<td class="fw-bold">' + (fac.codigo||'') + '</td>' +
                     '<td><small>' + fac.fecha + '<br>' + (fac.hora ? fac.hora.substring(0,5) : '') + '</small></td>' +
                     '<td><small>' + escHtml(fac.cliente_nombre || '') + '</small></td>' +
+                    '<td><small>' + escHtml(fac.vendedor_nombre || '-') +
+                        (parseInt(fac.vendedor_es_registrado) === 1 && fac.vendedor_codigo ? '<br><span class="badge bg-light text-dark" style="font-size:9px">' + escHtml(fac.vendedor_codigo) + '</span>' : '') +
+                        '</small></td>' +
                     '<td><span class="badge ' + tipoBadge + '" style="font-size:10px">' + fac.tipo + '</span></td>' +
                     '<td><small>' + fac.tipo_pago + '</small></td>' +
                     '<td class="fw-bold">$' + formatoNumero(fac.total) + '</td>' +

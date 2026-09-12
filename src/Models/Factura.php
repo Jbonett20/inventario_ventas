@@ -27,7 +27,12 @@ class Factura
             ['tipo' => $tipo, 'ini' => $rango['inicio'], 'fin' => $rango['fin']]
         );
 
-        $siguiente = $ultimo ? (int)$ultimo['ultimo'] + 1 : (int)$rango['inicio'];
+        // OJO: $ultimo es un array, por lo que siempre es "verdadero".
+        // Hay que comprobar el valor, no el array, para estrenar el rango.
+        $ultimoCodigo = $ultimo['ultimo'] ?? null;
+        $siguiente = ($ultimoCodigo !== null)
+            ? (int)$ultimoCodigo + 1
+            : (int)$rango['inicio'];
 
         if ($siguiente > (int)$rango['fin']) {
             throw new \RuntimeException("Rango de facturación {$tipo} agotado");
@@ -89,16 +94,19 @@ class Factura
             // Insertar factura
             $idFactura = $this->db->insert(
                 "INSERT INTO vb_facturas 
-                    (uuid, codigo, id_empresa, id_cliente, id_vendedor, fecha, hora, tipo, tipo_pago,
+                    (uuid, codigo, id_empresa, id_cliente, id_vendedor, id_vendedor_registrado,
+                     fecha, hora, tipo, tipo_pago,
                      subtotal, total_iva, total, pago_recibido, cambio, descuento, ganancia, estado)
                  VALUES 
-                    (:uuid, :cod, 1, :cli, :vend, :fecha, :hora, :tipo, :tpago,
+                    (:uuid, :cod, 1, :cli, :vend, :vendreg,
+                     :fecha, :hora, :tipo, :tpago,
                      :sub, :iva, :total, :pago, :cambio, :desc, :gan, 'ACTIVA')",
                 [
                     'uuid'  => \SIG\Helpers\Security::generateUUID(),
                     'cod'   => $codigo,
                     'cli'   => $data['id_cliente'] ?? 1,
                     'vend'  => $idVendedor,
+                    'vendreg' => !empty($data['id_vendedor_registrado']) ? (int)$data['id_vendedor_registrado'] : null,
                     'fecha' => date('Y-m-d'),
                     'hora'  => date('H:i:s'),
                     'tipo'  => $tipo,
@@ -338,9 +346,14 @@ class Factura
 
         $data = $this->db->select(
             "SELECT f.*, c.nombre AS cliente_nombre, c.documento AS cliente_documento,
+                    COALESCE(v.nombre, NULLIF(u.nombre_completo, ''), u.nombre_usuario) AS vendedor_nombre,
+                    v.codigo AS vendedor_codigo,
+                    (v.id_vendedor IS NOT NULL) AS vendedor_es_registrado,
                     (SELECT COUNT(*) FROM vb_devoluciones dv WHERE dv.id_factura = f.id_factura) AS tiene_devoluciones
              FROM vb_facturas f
              LEFT JOIN vb_clientes c ON f.id_cliente = c.id_cliente
+             LEFT JOIN vb_vendedores v ON f.id_vendedor_registrado = v.id_vendedor
+             LEFT JOIN vb_usuarios u ON f.id_vendedor = u.id_usuario
              {$where}
              ORDER BY f.id_factura DESC
              LIMIT :lim OFFSET :off",

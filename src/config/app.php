@@ -7,7 +7,7 @@ return [
     'version'    => '1.0.0',
     'env'        => getenv('APP_ENV') ?: 'development',
     'debug'      => filter_var(getenv('APP_DEBUG') ?: true, FILTER_VALIDATE_BOOLEAN),
-    'url'        => getenv('APP_URL') ?: 'http://localhost/inventario_ventas',
+    'url'        => getenv('APP_URL') ?: 'http://localhost/misproyectos/entorno/inventario_ventas/public',
     'timezone'   => 'America/Bogota',
     'locale'     => 'es_CO',
     

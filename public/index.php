@@ -138,6 +138,22 @@ $router->get('/proveedores/listar',   'ProveedorController@listar', ['SIG\Middle
 $router->post('/proveedores/guardar', 'ProveedorController@store', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/proveedores/eliminar','ProveedorController@delete', ['SIG\Middleware\AuthMiddleware']);
 
+// ---- Catálogos: categorías, secciones y tipos de IVA ----
+$router->get('/catalogos',           'CatalogoController@index', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/catalogos/listar',    'CatalogoController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/catalogos/guardar',  'CatalogoController@guardar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/catalogos/eliminar', 'CatalogoController@eliminar', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Vendedores ----
+$router->get('/vendedores',                  'VendedorController@index', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/vendedores/listar',           'VendedorController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/vendedores/buscar',           'VendedorController@buscar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/vendedores/siguiente-codigo', 'VendedorController@siguienteCodigo', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/vendedores/ventas',           'VendedorController@ventas', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/vendedores/detalle',          'VendedorController@detalle', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/vendedores/guardar',         'VendedorController@guardar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/vendedores/eliminar',        'VendedorController@eliminar', ['SIG\Middleware\AuthMiddleware']);
+
 // ---- Inventario ----
 $router->get('/inventario',           'InventarioController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/listar',    'InventarioController@listar', ['SIG\Middleware\AuthMiddleware']);
@@ -146,13 +162,30 @@ $router->get('/inventario/resumen',   'InventarioController@resumen', ['SIG\Midd
 $router->get('/inventario/stock-bajo','InventarioController@stockBajo', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/sugerencias-reorden','InventarioController@sugerenciasReorden', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/movimientos/{id}','InventarioController@movimientos', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/inventario/movimientos-por-fecha','InventarioController@movimientosPorFecha', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Ingresos ----
 $router->get('/ingresos',             'IngresoController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/ingresos/listar',      'IngresoController@listar', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/guardar',    'IngresoController@store', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/ingresos/buscar-productos','IngresoController@buscarProductos', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/ingresos/previsualizar',   'IngresoController@previsualizar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/ingresos/historial-precios','IngresoController@historialPrecios', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/rapido',     'IngresoController@rapido', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/ingresos/por-fecha',   'IngresoController@porFecha', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/ingresos/obtener/{id}','IngresoController@obtener', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/eliminar',   'IngresoController@eliminar', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Ingresos por factura (facturas de compra) ----
+$router->get('/ingresos/facturas',            'IngresoController@facturas', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/ingresos/factura/detalle',     'IngresoController@detalleFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/crear',      'IngresoController@crearFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/actualizar', 'IngresoController@actualizarFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/agregar',    'IngresoController@agregarProductoFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/quitar',     'IngresoController@quitarProductoFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/pasar',      'IngresoController@pasarFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/revertir',   'IngresoController@revertirFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/eliminar',   'IngresoController@eliminarFactura', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Plan Separe ----
 $router->get('/plan-separe',                'PlanSepareController@index', ['SIG\Middleware\AuthMiddleware']);
@@ -176,8 +209,7 @@ $router->post('/facturacion/anular',  'FacturaController@anular', ['SIG\Middlewa
 $router->post('/facturacion/base-diaria/guardar', 'FacturaController@guardarBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/facturacion/base-diaria/obtener', 'FacturaController@obtenerBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
 
-// ---- Facturación Electrónica (API directa) ----
-// La ruta /api/facturacion-electronica se maneja desde app/api/
+// ---- Facturación Electrónica (API DIAN) ----
 
 // ---- Créditos ----
 $router->get('/creditos',             'CreditoController@index', ['SIG\Middleware\AuthMiddleware']);
@@ -190,6 +222,12 @@ $router->get('/creditos/abonos/{id}', 'CreditoController@abonos', ['SIG\Middlewa
 $router->get('/egresos',              'EgresoController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/egresos/listar',       'EgresoController@listar', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/egresos/guardar',     'EgresoController@store', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/egresos/eliminar',    'EgresoController@delete', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Tipos de egreso ----
+$router->get('/egresos/tipos',          'EgresoController@tiposListar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/egresos/tipos/guardar', 'EgresoController@tiposGuardar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/egresos/tipos/eliminar','EgresoController@tiposEliminar', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Reportes ----
 $router->get('/reportes',             'ReporteController@index', ['SIG\Middleware\AuthMiddleware']);
@@ -210,6 +248,10 @@ $router->get('/exportar/pdf', 'ExportController@pdf', ['SIG\Middleware\AuthMiddl
 
 // ---- API Dashboard ----
 $router->get('/api/dashboard/resumen','DashboardController@resumen', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/api/dashboard/ultimas-ventas','DashboardController@ultimasVentas', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- API Facturación electrónica (DIAN) ----
+$router->post('/api/facturacion-electronica/enviar','FacturaController@enviarElectronica', ['SIG\Middleware\AuthMiddleware']);
 
 // ============================================================
 // 6. EJECUTAR ROUTER

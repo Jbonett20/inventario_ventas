@@ -114,7 +114,7 @@ class ProductoController
 
         if (!$puedeModificarPrecios && $id > 0) {
             // Si es cajero/inventario, quitar precios de los datos
-            unset($data['valor_venta'], $data['valor_unidad'], $data['valor_compra']);
+            unset($data['valor_venta'], $data['valor_unidad'], $data['valor_compra'], $data['precio_maximo_regulado']);
         }
 
         // Manejar carga de imagen
@@ -130,7 +130,7 @@ class ProductoController
 
         try {
             if ($id > 0) {
-                $this->productoModel->actualizar($id, $data);
+                $this->productoModel->actualizar($id, $data, $session->getUserId());
                 Response::success(null, 'Producto actualizado exitosamente');
             } else {
                 $newId = $this->productoModel->crear($data);

@@ -133,10 +133,10 @@
                                 <th>Estado</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="tbodyUltimasVentas">
                             <tr>
                                 <td colspan="6" class="text-center text-muted py-4">
-                                    <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+                                    <i class="fas fa-spinner fa-spin fa-2x d-block mb-2"></i>
                                     Cargando datos...
                                 </td>
                             </tr>
@@ -218,6 +218,47 @@ $(function() {
                 $('#totalClientes').text(d.total_clientes || 0);
                 $('#capitalTotal').text('$' + (d.capital_total || 0).toLocaleString());
             }
+        }
+    });
+
+    // ===== ÚLTIMAS VENTAS =====
+    function escHtmlDash(s) { if (!s) return ''; return $('<div>').text(s).html(); }
+    function formatoNumeroDash(n) { return parseFloat(n||0).toLocaleString('es-CO', {minimumFractionDigits:0}); }
+
+    $.ajax({
+        url: '<?= $basePath ?>/api/dashboard/ultimas-ventas',
+        method: 'GET',
+        dataType: 'json',
+        data: { limite: 5 },
+        success: function(response) {
+            if (!response.success || !response.data) return;
+            var ventas = response.data.ventas || [];
+            var html = '';
+
+            if (!ventas.length) {
+                html = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay ventas registradas</td></tr>';
+            } else {
+                $.each(ventas, function(i, v) {
+                    var estado = (v.estado === 'ANULADA')
+                        ? '<span class="badge bg-danger">Anulada</span>'
+                        : '<span class="badge bg-success">Activa</span>';
+                    var fe = (v.tipo === 'ELECTRONICA') ? ' <i class="fas fa-file-invoice text-primary" title="Factura electrónica"></i>' : '';
+
+                    html += '<tr>' +
+                        '<td><a href="<?= $basePath ?>/facturacion/historial" class="fw-bold">' + escHtmlDash(String(v.codigo)) + fe + '</a></td>' +
+                        '<td>' + escHtmlDash(v.cliente) + '</td>' +
+                        '<td class="fw-bold">$' + formatoNumeroDash(v.total) + '</td>' +
+                        '<td><span class="badge bg-light text-dark">' + escHtmlDash(v.tipo_pago) + '</span></td>' +
+                        '<td><small>' + v.fecha + '<br>' + (v.hora || '') + '</small></td>' +
+                        '<td>' + estado + '</td>' +
+                        '</tr>';
+                });
+            }
+
+            $('#tbodyUltimasVentas').html(html);
+        },
+        error: function() {
+            $('#tbodyUltimasVentas').html('<tr><td colspan="6" class="text-center text-muted py-4">No se pudieron cargar las ventas</td></tr>');
         }
     });
 });
