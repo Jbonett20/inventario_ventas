@@ -351,10 +351,101 @@ function abrirDevolucion(idFactura) {
             '<div class="d-flex justify-content-between align-items-center">' +
             '<div class="mb-3"><label class="form-label fw-semibold">Motivo de la devolución <span class="text-danger">*</span></label>' +
             '<textarea class="form-control" id="motivoDev" rows="2" placeholder="Ej: Producto defectuoso, error en la venta..."></textarea></div>' +
-            '<div class="text-end"><strong>Total a devolver: </strong><span class="fw-bold fs-5 text-danger" id="totalDev">$0</span></div></div>';
+            '<div class="text-end"><strong>Total a devolver: </strong><span class="fw-bold fs-5 text-danger" id="totalDev">$0</span></div></div>' +
+            '<hr class="my-2">' +
+            '<label class="form-label fw-semibold mb-1">¿Cómo se le devuelve la plata? ' +
+            '<small class="text-muted">(si no elige nada, se asume todo en efectivo)</small></label>' +
+            '<div class="d-flex flex-wrap gap-2 mb-2" id="metodosDev"></div>' +
+            '<div class="input-group input-group-sm mb-2">' +
+            '<span class="input-group-text">$</span>' +
+            '<input type="number" id="pagoDevMonto" class="form-control" min="0" step="100" placeholder="Monto" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();agregarPagoDev();}">' +
+            '<button class="btn btn-outline-primary" type="button" onclick="agregarPagoDev()"><i class="fas fa-plus"></i></button>' +
+            '<button class="btn btn-outline-secondary" type="button" onclick="agregarRestoDev()" title="Cubrir todo el total">Resto</button>' +
+            '</div>' +
+            '<div id="listaPagosDev"></div>' +
+            '<div class="d-flex justify-content-between small mt-1"><span class="text-muted">Devolviendo</span>' +
+            '<span id="devFalta" class="fw-bold text-muted">$0</span></div>';
         $('#detalleDevolucion').html(html);
+        pintarMetodosDev();
+        pagosDev = [];
+        // Calcular el total de una vez con las cantidades que vienen por defecto
+        calcularTotalDev();
+        refrescarPagosDev();
         $('#btnProcesarDev').prop('disabled', false);
     });
+}
+
+// ===== FORMA DE DEVOLUCIÓN DEL DINERO =====
+var METODOS_DEV = ['EFECTIVO', 'NEQUI', 'DAVIPLATA', 'ADDI', 'TRANSFERENCIA', 'OTROS'];
+var pagosDev = [];
+
+function pintarMetodosDev() {
+    var h = '';
+    $.each(METODOS_DEV, function(i, m) {
+        h += '<label class="btn btn-outline-primary btn-sm rounded-pill' + (i === 0 ? ' active' : '') + '">' +
+             '<input type="radio" name="tipoDev" value="' + m + '"' + (i === 0 ? ' checked' : '') +
+             ' class="d-none" onchange="$(this).closest(\'label\').addClass(\'active\').siblings().removeClass(\'active\')">' +
+             m + '</label>';
+    });
+    $('#metodosDev').html(h);
+}
+
+function metodoDevSeleccionado() {
+    return $('input[name="tipoDev"]:checked').val() || 'EFECTIVO';
+}
+
+function totalDevActual() {
+    return parseFloat(($('#totalDev').text() || '').replace(/[^0-9]/g, '')) || 0;
+}
+
+function totalPagosDev() {
+    return pagosDev.reduce(function(s, p) { return s + (parseFloat(p.monto) || 0); }, 0);
+}
+
+function agregarPagoDev() {
+    var monto = parseFloat($('#pagoDevMonto').val()) || 0;
+    if (monto <= 0) { PNotify.error({ text: 'Escriba el monto' }); return; }
+    pagosDev.push({ metodo: metodoDevSeleccionado(), monto: monto });
+    $('#pagoDevMonto').val('');
+    refrescarPagosDev();
+}
+
+function agregarRestoDev() {
+    var falta = totalDevActual() - totalPagosDev();
+    if (falta <= 0.009) { PNotify.info({ text: 'Ya está cubierto el total' }); return; }
+    pagosDev.push({ metodo: metodoDevSeleccionado(), monto: Math.round(falta * 100) / 100 });
+    $('#pagoDevMonto').val('');
+    refrescarPagosDev();
+}
+
+function quitarPagoDev(i) {
+    pagosDev.splice(i, 1);
+    refrescarPagosDev();
+}
+
+function refrescarPagosDev() {
+    var h = '';
+    $.each(pagosDev, function(i, p) {
+        h += '<div class="d-flex justify-content-between align-items-center border rounded-3 px-2 py-1 mb-1 bg-light">' +
+             '<span><span class="badge bg-warning text-dark">' + escHtml(p.metodo) + '</span> <strong>$' + formatoNumero(p.monto) + '</strong></span>' +
+             '<button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="quitarPagoDev(' + i + ')"><i class="fas fa-times"></i></button>' +
+             '</div>';
+    });
+    $('#listaPagosDev').html(h);
+
+    var total = totalDevActual();
+    var puesto = totalPagosDev();
+
+    if (!pagosDev.length) {
+        $('#devFalta').removeClass('text-danger text-success').addClass('text-muted')
+            .text('todo en efectivo ($' + formatoNumero(total) + ')');
+    } else if (Math.abs(puesto - total) < 0.01) {
+        $('#devFalta').removeClass('text-muted text-danger').addClass('text-success').text('cuadra con el total');
+    } else {
+        $('#devFalta').removeClass('text-muted text-success').addClass('text-danger')
+            .text('$' + formatoNumero(puesto) + ' de $' + formatoNumero(total));
+    }
 }
 
 function calcularTotalDev() {
@@ -384,6 +475,12 @@ function calcularTotalDev() {
         // Ya procesados arriba
     });
     $('#totalDev').text('$' + formatoNumero(total));
+
+    // Si ya eligió una sola forma de devolución, se ajusta al nuevo total
+    if (pagosDev.length === 1) {
+        pagosDev[0].monto = total;
+    }
+    refrescarPagosDev();
 }
 
 function procesarDevolucion() {
@@ -412,11 +509,21 @@ function procesarDevolucion() {
     if (detalles.length === 0) { PNotify.error({ text: 'Debe devolver al menos un producto' }); return; }
     if (!motivo) { PNotify.error({ text: 'Debe indicar el motivo de la devolución' }); return; }
 
+    // Si eligió formas de devolución, tienen que cuadrar con el total
+    if (pagosDev.length) {
+        var totalDev = totalDevActual();
+        var puestoDev = totalPagosDev();
+        if (Math.abs(puestoDev - totalDev) > 0.01) {
+            PNotify.error({ text: 'Lo que se devuelve ($' + formatoNumero(puestoDev) + ') no coincide con el total ($' + formatoNumero(totalDev) + '). Ajuste los montos o quítelos para devolver todo en efectivo.' });
+            return;
+        }
+    }
+
     $('#btnProcesarDev').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Procesando...');
 
     $.ajax({
         url: '<?= $basePath ?>/devoluciones/guardar', method: 'POST', contentType: 'application/json',
-        data: JSON.stringify({ id_factura: devFacturaActual, motivo: motivo, detalles: detalles }),
+        data: JSON.stringify({ id_factura: devFacturaActual, motivo: motivo, detalles: detalles, pagos: pagosDev.length ? pagosDev : null }),
         success: function(r) {
             if (r.success) {
                 PNotify.success({ text: r.message });

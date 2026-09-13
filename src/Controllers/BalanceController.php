@@ -48,9 +48,21 @@ class BalanceController
         );
 
         // Devoluciones del día
+        // OJO: al efectivo de la caja solo le baja lo que se devolvió EN EFECTIVO.
+        // Lo devuelto por Nequi/Daviplata no toca el dinero físico.
+        // Si una devolución no tiene forma registrada, se asume efectivo.
         $devoluciones = $this->db->fetchOne(
-            "SELECT COALESCE(COUNT(*), 0) AS cantidad, COALESCE(SUM(total), 0) AS total
-             FROM vb_devoluciones WHERE fecha = :fecha",
+            "SELECT COALESCE(COUNT(*), 0) AS cantidad,
+                    COALESCE(SUM(d.total), 0) AS total,
+                    COALESCE(SUM(CASE WHEN p.dev_efectivo IS NULL THEN d.total ELSE p.dev_efectivo END), 0) AS total_efectivo
+             FROM vb_devoluciones d
+             LEFT JOIN (
+                SELECT id_devolucion,
+                       SUM(CASE WHEN metodo = 'EFECTIVO' THEN monto ELSE 0 END) AS dev_efectivo
+                FROM vb_devoluciones_pagos
+                GROUP BY id_devolucion
+             ) p ON p.id_devolucion = d.id_devolucion
+             WHERE d.fecha = :fecha",
             ['fecha' => $fecha]
         );
 
@@ -79,11 +91,12 @@ class BalanceController
         $totalCambio = (float)($ventas['total_cambio'] ?? 0);
         $totalGanancia = (float)($ventas['total_ganancia'] ?? 0);
         $totalDevoluciones = (float)($devoluciones['total'] ?? 0);
+        $totalDevEfectivo = (float)($devoluciones['total_efectivo'] ?? 0);
         $totalEgresos = (float)($egresos['total'] ?? 0);
         $totalAnuladas = (float)($anuladas['total'] ?? 0);
 
-        // Saldo esperado: base + ventas - cambio - devoluciones - egresos
-        $saldoEsperado = $totalBase + $totalVentas - $totalCambio - $totalDevoluciones - $totalEgresos;
+        // Saldo esperado en caja: base + ventas - cambio - devoluciones EN EFECTIVO - egresos
+        $saldoEsperado = $totalBase + $totalVentas - $totalCambio - $totalDevEfectivo - $totalEgresos;
 
         Response::success([
             'fecha'          => $fecha,
@@ -95,8 +108,9 @@ class BalanceController
                 'ganancia'     => $totalGanancia,
             ],
             'devoluciones'   => [
-                'cantidad' => (int)($devoluciones['cantidad'] ?? 0),
-                'total'    => $totalDevoluciones,
+                'cantidad'       => (int)($devoluciones['cantidad'] ?? 0),
+                'total'          => $totalDevoluciones,
+                'total_efectivo' => $totalDevEfectivo,
             ],
             'egresos'        => [
                 'cantidad' => (int)($egresos['cantidad'] ?? 0),
@@ -164,19 +178,44 @@ class BalanceController
 
     /**
      * API: Cerrar el día
+     *
+     * Se apoya en el modelo de cierre de inventario para que el cierre diario
+     * quede igual de completo que los demás (ventas, devoluciones, ingresos,
+     * egresos y capital del inventario).
      */
     public function cerrar(Request $r): void
     {
-        $data = $r->json() ?: $r->all();
+        $data  = $r->json() ?: $r->all();
         $fecha = $data['fecha'] ?? date('Y-m-d');
 
+        try {
+            $res = (new \SIG\Models\CierreInventario())->cerrar(
+                $fecha,
+                $fecha,
+                'DIARIO',
+                $this->session->getUserId(),
+                'Cierre del día desde Balance Diario'
+            );
+
+            Response::success(['id_cierre' => $res['id_cierre']], 'Día cerrado correctamente');
+        } catch (\Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+    }
+
+    /**
+     * (anterior) Cerrar el día guardando solo el capital del inventario.
+     * Se conserva como respaldo por si se necesita el cálculo directo.
+     */
+    private function cerrarSoloCapital(string $fecha): int
+    {
         // Verificar si ya está cerrado
         $existe = $this->db->fetchOne(
             "SELECT id_cierre FROM vb_cierres_inventario WHERE fecha_cierre = :fecha",
             ['fecha' => $fecha]
         );
         if ($existe) {
-            Response::error('El día ya está cerrado', 400);
+            throw new \RuntimeException('El día ya está cerrado');
         }
 
         // Obtener resumen del inventario
@@ -207,7 +246,7 @@ class BalanceController
             ]
         );
 
-        Response::success(['id_cierre' => $id], 'Día cerrado correctamente');
+        return (int)$id;
     }
 
     /**

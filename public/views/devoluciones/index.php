@@ -124,6 +124,24 @@ function verDetalleDev(id) {
                 '<td class="fw-bold text-danger">$' + formatoNumero(det.subtotal) + '</td></tr>';
         });
         html += '</tbody></table><hr><div class="text-end"><strong>Total devuelto: <span class="text-danger fw-bold fs-5">$' + formatoNumero(dev.total) + '</span></strong></div>';
+
+        // Con qué se le devolvió la plata al cliente
+        var pagos = dev.pagos || [];
+        if (pagos.length) {
+            html += '<hr><h6 class="fw-bold"><i class="fas fa-hand-holding-usd me-1"></i>Forma de devolución</h6>';
+            html += '<div class="table-responsive"><table class="table table-sm mb-2"><thead class="table-light">' +
+                    '<tr><th>Método</th><th class="text-end">Monto</th><th>Referencia</th></tr></thead><tbody>';
+            $.each(pagos, function(i, p) {
+                html += '<tr><td><span class="badge bg-warning text-dark">' + escHtml(p.metodo) + '</span></td>' +
+                        '<td class="text-end fw-semibold">$' + formatoNumero(p.monto) + '</td>' +
+                        '<td><small class="text-muted">' + escHtml(p.referencia || '-') + '</small></td></tr>';
+            });
+            html += '</tbody></table></div>';
+            if (dev.tipo_pago === 'MIXTO') {
+                html += '<div class="alert alert-info py-1 small mb-0"><i class="fas fa-info-circle me-1"></i>Devolución mixta: ' + pagos.length + ' formas de pago.</div>';
+            }
+        }
+
         $('#detalleDevBody').html(html);
     });
 }

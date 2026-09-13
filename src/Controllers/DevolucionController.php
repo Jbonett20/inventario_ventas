@@ -51,7 +51,7 @@ class DevolucionController
             $id = $this->model->crear($data, $this->session->getUserId());
             Response::success(['id_devolucion' => $id], 'Devolución procesada correctamente');
         } catch (\Exception $e) {
-            Response::error('Error al procesar devolución: ' . $e->getMessage(), 500);
+            Response::error('Error al procesar devolución: ' . $e->getMessage(), 422);
         }
     }
 

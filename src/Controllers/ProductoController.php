@@ -211,8 +211,11 @@ class ProductoController
     {
         $errors = [];
 
-        if (empty($data['codigo'])) {
-            $errors[] = 'El código del producto es requerido';
+        // El código ya NO se digita: lo asigna el sistema con un consecutivo.
+        // Si por API llega uno, tiene que ser numérico.
+        if (isset($data['codigo']) && $data['codigo'] !== '' && $data['codigo'] !== null
+            && !ctype_digit((string)$data['codigo'])) {
+            $errors[] = 'El código del producto debe contener solo números';
         }
         if (empty($data['descripcion'])) {
             $errors[] = 'La descripción del producto es requerida';

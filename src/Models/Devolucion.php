@@ -54,19 +54,39 @@ class Devolucion
             }
             unset($det);
 
+            // Cómo se le devuelve la plata al cliente (puede ser solo una forma
+            // o varias: una parte en efectivo y otra por Nequi, por ejemplo)
+            $infoPagos = $this->procesarPagosDevolucion($data, (float)$total);
+
             // Insertar devolución
             $idDev = $this->db->insert(
-                "INSERT INTO vb_devoluciones (codigo, id_factura, id_cliente, motivo, total, id_usuario, fecha)
-                 VALUES (:cod, :fac, :cli, :mot, :tot, :uid, CURDATE())",
+                "INSERT INTO vb_devoluciones (codigo, id_factura, id_cliente, motivo, total, tipo_pago, id_usuario, fecha)
+                 VALUES (:cod, :fac, :cli, :mot, :tot, :tpago, :uid, CURDATE())",
                 [
-                    'cod' => $codigo,
-                    'fac' => $idFactura,
-                    'cli' => $factura['id_cliente'],
-                    'mot' => $motivo,
-                    'tot' => $total,
-                    'uid' => $idUsuario,
+                    'cod'   => $codigo,
+                    'fac'   => $idFactura,
+                    'cli'   => $factura['id_cliente'],
+                    'mot'   => $motivo,
+                    'tot'   => $total,
+                    'tpago' => $infoPagos['resumen'],
+                    'uid'   => $idUsuario,
                 ]
             );
+
+            // Con qué se le devolvió la plata al cliente
+            foreach ($infoPagos['pagos'] as $pg) {
+                $this->db->insert(
+                    "INSERT INTO vb_devoluciones_pagos (id_devolucion, metodo, monto, referencia, id_usuario, created_at)
+                     VALUES (:dev, :metodo, :monto, :ref, :uid, NOW())",
+                    [
+                        'dev'    => $idDev,
+                        'metodo' => $pg['metodo'],
+                        'monto'  => $pg['monto'],
+                        'ref'    => $pg['referencia'],
+                        'uid'    => $idUsuario,
+                    ]
+                );
+            }
 
             // Insertar detalle y revertir inventario
             foreach ($detalles as $det) {
@@ -147,6 +167,69 @@ class Devolucion
     }
 
     /**
+     * Normaliza y valida con qué se le devuelve la plata al cliente.
+     *
+     * Acepta varias formas en la misma devolución:
+     *   $data['pagos'] = [ ['metodo' => 'EFECTIVO', 'monto' => 10000], ... ]
+     *
+     * Si no llega el arreglo, se asume una sola forma ($data['tipo_pago']).
+     * Aquí NO hay cambio: la suma debe dar exactamente el total devuelto,
+     * porque lo que sale de caja es justo lo que se le entrega al cliente.
+     *
+     * @return array ['pagos' => array, 'resumen' => string]
+     */
+    private function procesarPagosDevolucion(array $data, float $total): array
+    {
+        $pagos  = [];
+        $brutos = $data['pagos'] ?? null;
+
+        if (is_array($brutos) && count($brutos)) {
+            foreach ($brutos as $p) {
+                if (!is_array($p)) continue;
+
+                $metodo = strtoupper(trim((string)($p['metodo'] ?? '')));
+                $monto  = round((float)($p['monto'] ?? 0), 2);
+
+                if ($metodo === '' || $monto <= 0) continue;
+
+                $ref = isset($p['referencia']) ? trim((string)$p['referencia']) : '';
+
+                $pagos[] = [
+                    'metodo'     => mb_substr($metodo, 0, 50),
+                    'monto'      => $monto,
+                    'referencia' => $ref !== '' ? mb_substr($ref, 0, 100) : null,
+                ];
+            }
+        }
+
+        // Compatibilidad: sin arreglo, una sola forma de devolución
+        if (!$pagos) {
+            $metodo = strtoupper(trim((string)($data['tipo_pago'] ?? ''))) ?: 'EFECTIVO';
+            $pagos[] = [
+                'metodo'     => mb_substr($metodo, 0, 50),
+                'monto'      => round($total, 2),
+                'referencia' => null,
+            ];
+        }
+
+        $suma = round(array_sum(array_column($pagos, 'monto')), 2);
+
+        if (abs($suma - round($total, 2)) > 0.01) {
+            throw new RuntimeException(
+                'Lo que se devuelve ($' . number_format($suma, 0, ',', '.') . ') no coincide con el total de la devolución ($' .
+                number_format($total, 0, ',', '.') . '). Ajuste los montos.'
+            );
+        }
+
+        $metodos = array_values(array_unique(array_column($pagos, 'metodo')));
+
+        return [
+            'pagos'   => $pagos,
+            'resumen' => count($metodos) > 1 ? 'MIXTO' : $metodos[0],
+        ];
+    }
+
+    /**
      * Listar devoluciones con paginación
      */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
@@ -215,6 +298,34 @@ class Devolucion
             ['id' => $id]
         );
 
+        // Con qué se le devolvió la plata al cliente
+        $dev['pagos'] = $this->db->select(
+            "SELECT id_pago_devolucion, metodo, monto, referencia, created_at
+             FROM vb_devoluciones_pagos
+             WHERE id_devolucion = :id
+             ORDER BY id_pago_devolucion ASC",
+            ['id' => $id]
+        );
+
         return $dev;
+    }
+
+    /**
+     * Resumen de devoluciones por método en un rango de fechas.
+     * Sirve para el cuadre de caja y para el cierre de inventario.
+     */
+    public function resumenPorMetodo(string $desde, string $hasta): array
+    {
+        return $this->db->select(
+            "SELECT pg.metodo,
+                    COUNT(DISTINCT pg.id_devolucion) AS devoluciones,
+                    COALESCE(SUM(pg.monto), 0) AS total
+             FROM vb_devoluciones_pagos pg
+             JOIN vb_devoluciones d ON d.id_devolucion = pg.id_devolucion
+             WHERE d.fecha BETWEEN :desde AND :hasta
+             GROUP BY pg.metodo
+             ORDER BY total DESC",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
     }
 }

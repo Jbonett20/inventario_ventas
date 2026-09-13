@@ -210,8 +210,13 @@
         <!-- Pago -->
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body">
-                <h6 class="fw-bold mb-3"><i class="fas fa-credit-card me-2"></i>Forma de Pago</h6>
-                <div class="d-flex flex-wrap gap-2 mb-3" id="metodosPago">
+                <h6 class="fw-bold mb-3 d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-credit-card me-2"></i>Forma de Pago</span>
+                    <small class="text-muted fw-normal">se puede pagar con varias</small>
+                </h6>
+
+                <!-- Método con el que se agrega el pago -->
+                <div class="d-flex flex-wrap gap-2 mb-2" id="metodosPago">
                     <?php
                     $metodos = ['EFECTIVO', 'NEQUI', 'DAVIPLATA', 'ADDI', 'TRANSFERENCIA', 'OTROS'];
                     foreach ($metodos as $i => $m):
@@ -225,16 +230,33 @@
                 </div>
 
                 <div class="mb-2">
-                    <label class="form-label small fw-semibold">Recibido</label>
                     <div class="input-group">
                         <span class="input-group-text">$</span>
-                        <input type="number" class="form-control form-control-lg" id="pagoRecibido" min="0" step="500" value="0" onchange="calcularCambio()" onkeyup="calcularCambio()">
+                        <input type="number" class="form-control" id="pagoMonto" min="0" step="100" value=""
+                               placeholder="Monto" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarPago();}">
+                        <button class="btn btn-primary" type="button" onclick="agregarPago()" title="Agregar el pago con el método seleccionado">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" onclick="agregarPagoRestante()" title="Cubrir lo que falta">
+                            Resto
+                        </button>
                     </div>
                 </div>
 
+                <!-- Pagos agregados -->
+                <div id="listaPagos" class="mb-2"></div>
+
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Total a pagar</span>
+                    <span class="fw-bold" id="lblTotalPagar">$0</span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Pagado</span>
+                    <span class="fw-bold text-success" id="lblPagado">$0</span>
+                </div>
                 <div class="d-flex justify-content-between mb-2">
-                    <span class="text-muted">Cambio</span>
-                    <span class="fw-bold fs-5 text-success" id="lblCambio">$0</span>
+                    <span class="text-muted" id="lblFaltaTxt">Falta</span>
+                    <span class="fw-bold fs-5 text-danger" id="lblFalta">$0</span>
                 </div>
 
                 <!-- Descuento (solo admin) -->
@@ -762,13 +784,79 @@ function eliminarDelCarrito(id) {
     actualizarCarrito();
 }
 
-// ===== CÁLCULO DE CAMBIO =====
-function calcularCambio() {
+// ===== PAGOS FRACCIONADOS =====
+var pagos = [];   // [{ metodo, monto }]
+
+function metodoSeleccionado() {
+    return $('input[name="tipoPago"]:checked').val() || 'EFECTIVO';
+}
+
+function totalAPagar() {
     var totalTexto = $('#lblTotal').text().replace(/[^0-9]/g, '');
-    var total = parseFloat(totalTexto) || 0;
-    var pago = parseFloat($('#pagoRecibido').val()) || 0;
-    var cambio = Math.max(0, pago - total);
-    $('#lblCambio').text('$' + formatoNumero(cambio));
+    return parseFloat(totalTexto) || 0;
+}
+
+function totalPagado() {
+    return pagos.reduce(function(s, p) { return s + (parseFloat(p.monto) || 0); }, 0);
+}
+
+function agregarPago() {
+    var monto = parseFloat($('#pagoMonto').val()) || 0;
+    if (monto <= 0) { PNotify.error({ text: 'Escriba el monto del pago' }); return; }
+
+    pagos.push({ metodo: metodoSeleccionado(), monto: monto });
+    $('#pagoMonto').val('');
+    calcularCambio();
+    $('#pagoMonto').focus();
+}
+
+function agregarPagoRestante() {
+    var falta = totalAPagar() - totalPagado();
+    if (falta <= 0) { PNotify.info({ text: 'La venta ya está cubierta' }); return; }
+
+    pagos.push({ metodo: metodoSeleccionado(), monto: Math.round(falta * 100) / 100 });
+    $('#pagoMonto').val('');
+    calcularCambio();
+}
+
+function quitarPago(i) {
+    pagos.splice(i, 1);
+    calcularCambio();
+}
+
+function calcularCambio() {
+    var total = totalAPagar();
+    var pagado = totalPagado();
+    var falta = total - pagado;
+
+    var html = '';
+    $.each(pagos, function(i, p) {
+        html += '<div class="d-flex justify-content-between align-items-center border rounded-3 px-2 py-1 mb-1 bg-light">' +
+                '<span><span class="badge bg-primary">' + escHtml2(p.metodo) + '</span> <strong>$' + formatoNumero(p.monto) + '</strong></span>' +
+                '<button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="quitarPago(' + i + ')" title="Quitar"><i class="fas fa-times"></i></button>' +
+                '</div>';
+    });
+    $('#listaPagos').html(html);
+
+    $('#lblTotalPagar').text('$' + formatoNumero(total));
+    $('#lblPagado').text('$' + formatoNumero(pagado));
+
+    if (falta > 0.009) {
+        $('#lblFaltaTxt').text('Falta');
+        $('#lblFalta').removeClass('text-success').addClass('text-danger').text('$' + formatoNumero(falta));
+    } else if (falta < -0.009) {
+        $('#lblFaltaTxt').text('Cambio');
+        $('#lblFalta').removeClass('text-danger').addClass('text-success').text('$' + formatoNumero(Math.abs(falta)));
+    } else {
+        $('#lblFaltaTxt').text('Falta');
+        $('#lblFalta').removeClass('text-danger').addClass('text-success').text('$0');
+    }
+}
+
+function limpiarPagos() {
+    pagos = [];
+    $('#pagoMonto').val('');
+    calcularCambio();
 }
 
 // ===== CLIENTE =====
@@ -949,10 +1037,25 @@ function facturar(tipo) {
         detalles.push(det);
     });
 
+    var totalPagar = totalAPagar();
+    var pagado = totalPagado();
+
+    // Si no agregaron pagos, se cobra todo con el método seleccionado
+    if (!pagos.length) {
+        pagos.push({ metodo: metodoSeleccionado(), monto: totalPagar });
+        calcularCambio();
+    }
+
+    if (totalPagado() + 0.009 < totalPagar) {
+        PNotify.error({ text: 'Faltan $' + formatoNumero(totalPagar - totalPagado()) + ' por cubrir' });
+        return;
+    }
+
     var data = {
         id_cliente: parseInt($('#id_cliente').val()) || 1,
-        tipo_pago: $('input[name="tipoPago"]:checked').val() || 'EFECTIVO',
-        pago_recibido: parseFloat($('#pagoRecibido').val()) || 0,
+        tipo_pago: metodoSeleccionado(),
+        pagos: pagos,
+        pago_recibido: totalPagado(),
         descuento: parseFloat($('#descuentoValor').val()) || 0,
         tipo: tipo,
         id_vendedor_registrado: parseInt($('#id_vendedor_registrado').val()) || null,
@@ -985,8 +1088,7 @@ function facturar(tipo) {
                 idCounter = 0;
                 actualizarCarrito();
                 resetVendedorVenta();
-                $('#pagoRecibido').val(0);
-                $('#lblCambio').text('$0');
+                limpiarPagos();
                 cargarProductosPos();
                 $('#buscarProducto').focus();
             } else {
@@ -1038,7 +1140,7 @@ $(document).on('keydown', function(e) {
     if (e.key === 'F1') { e.preventDefault(); $('#buscarProducto').focus().select(); }
     if (e.key === 'F2') { e.preventDefault(); facturar('NORMAL'); }
     if (e.key === 'F3') { e.preventDefault(); facturar('ELECTRONICA'); }
-    if (e.key === 'F4') { e.preventDefault(); $('#pagoRecibido').focus().select(); }
+    if (e.key === 'F4') { e.preventDefault(); $('#pagoMonto').focus().select(); }
     if (e.key === 'Escape') { carrito = []; actualizarCarrito(); }
     if (e.key === 'F8') { cambiarCliente(); }
     if (e.key === 'F9') { e.preventDefault(); toggleVendedorVenta(); }

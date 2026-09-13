@@ -29,11 +29,13 @@ class Producto
             $where .= " AND (p.codigo LIKE :search 
                           OR p.descripcion LIKE :search2 
                           OR p.codigo_barras_1 LIKE :search3
-                          OR p.codigo_barras_2 LIKE :search4)";
+                          OR p.codigo_barras_2 LIKE :search4
+                          OR p.codigo_barras_3 LIKE :search5)";
             $params['search']  = "%{$search}%";
             $params['search2'] = "%{$search}%";
             $params['search3'] = "%{$search}%";
             $params['search4'] = "%{$search}%";
+            $params['search5'] = "%{$search}%";
         }
 
         $sql = "SELECT p.*, prov.nombre AS proveedor_nombre, 
@@ -80,11 +82,13 @@ class Producto
             $where .= " AND (p.codigo LIKE :search 
                           OR p.descripcion LIKE :search2 
                           OR p.codigo_barras_1 LIKE :search3
-                          OR p.codigo_barras_2 LIKE :search4)";
+                          OR p.codigo_barras_2 LIKE :search4
+                          OR p.codigo_barras_3 LIKE :search5)";
             $params['search']  = "%{$search}%";
             $params['search2'] = "%{$search}%";
             $params['search3'] = "%{$search}%";
             $params['search4'] = "%{$search}%";
+            $params['search5'] = "%{$search}%";
         }
 
         $sql = "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion, 
@@ -133,7 +137,8 @@ class Producto
                 LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
                 WHERE p.activo = 1
                   AND (p.codigo LIKE :q1 OR p.descripcion LIKE :q2 
-                       OR p.codigo_barras_1 LIKE :q3 OR p.codigo_barras_2 LIKE :q4)
+                       OR p.codigo_barras_1 LIKE :q3 OR p.codigo_barras_2 LIKE :q4
+                       OR p.codigo_barras_3 LIKE :q5)
                 ORDER BY p.descripcion ASC
                 LIMIT 20";
 
@@ -142,6 +147,7 @@ class Producto
             'q2' => "%{$query}%",
             'q3' => "%{$query}%",
             'q4' => "%{$query}%",
+            'q5' => "%{$query}%",
         ];
 
         return $this->db->select($sql, $params);
@@ -185,49 +191,114 @@ class Producto
     /**
      * Crear un nuevo producto
      */
+    /**
+     * Siguiente código numérico disponible.
+     * Se usa un consecutivo largo (1000001, 1000002, ...) para que no se
+     * agote nunca y no choque con códigos de barras ni claves escritas a mano.
+     */
+    public function siguienteCodigo(): int
+    {
+        $r = $this->db->fetchOne(
+            "SELECT COALESCE(MAX(codigo), 1000000) + 1 AS siguiente FROM vb_productos"
+        );
+
+        return (int)($r['siguiente'] ?? 1000001);
+    }
+
+    /**
+     * Resuelve el código de un producto.
+     * - Si viene un código válido (solo dígitos) y está libre, se respeta.
+     * - En cualquier otro caso se genera el siguiente consecutivo.
+     */
+    private function resolverCodigo($codigo, int $idExcluir = 0): int
+    {
+        $codigo = is_string($codigo) ? trim($codigo) : $codigo;
+
+        if ($codigo !== null && $codigo !== '' && ctype_digit((string)$codigo) && (int)$codigo > 0) {
+            $sql = "SELECT id_producto FROM vb_productos WHERE codigo = :c";
+            $params = ['c' => (int)$codigo];
+
+            if ($idExcluir > 0) {
+                $sql .= " AND id_producto <> :id";
+                $params['id'] = $idExcluir;
+            }
+
+            if ($this->db->fetchOne($sql, $params)) {
+                throw new \RuntimeException('El código ' . (int)$codigo . ' ya está asignado a otro producto.');
+            }
+
+            return (int)$codigo;
+        }
+
+        return $this->siguienteCodigo();
+    }
+
     public function crear(array $data): int
     {
         $data['presentacion'] = $this->generarPresentacion($data);
-        $productoId = $this->db->insert(
-            "INSERT INTO vb_productos 
-                (codigo, codigo_barras_1, codigo_barras_2, codigo_barras_3,
-                 descripcion, presentacion, marca, id_proveedor, id_categoria,
-                 id_iva, id_seccion, unidad_cerrada, fraccion,
-                 valor_compra, valor_venta, valor_unidad, precio_maximo_regulado, rentabilidad, stock_minimo, imagen,
-                 tipo_venta, unidad_medida, cantidad_por_unidad)
-             VALUES 
-                (:codigo, :barras1, :barras2, :barras3,
-                 :descripcion, :presentacion, :marca, :proveedor, :categoria,
-                 :iva, :seccion, :unidad_cerrada, :fraccion,
-                 :compra, :venta, :unidad, :tope, :rentabilidad, :stock_minimo, :imagen,
-                 :tipo_venta, :unidad_medida, :cantidad_por_unidad)",
-            [
-                'codigo'             => $data['codigo'],
-                'barras1'            => $data['codigo_barras_1'] ?? '',
-                'barras2'            => $data['codigo_barras_2'] ?? '',
-                'barras3'            => $data['codigo_barras_3'] ?? '',
-                'descripcion'        => $data['descripcion'],
-                'presentacion'       => $data['presentacion'] ?? '',
-                'marca'              => $data['marca'] ?? '',
-                'proveedor'          => $data['id_proveedor'] ?: null,
-                'categoria'          => $data['id_categoria'] ?: null,
-                'iva'                => $data['id_iva'] ?: null,
-                'seccion'            => $data['id_seccion'] ?: null,
-                'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
-                'fraccion'           => (int)($data['fraccion'] ?? 0),
-                'compra'             => $data['valor_compra'] ?? 0,
-                'venta'              => $data['valor_venta'] ?? 0,
-                'unidad'             => $data['valor_unidad'] ?? 0,
-                'tope'               => (isset($data['precio_maximo_regulado']) && $data['precio_maximo_regulado'] !== '' && $data['precio_maximo_regulado'] !== null)
-                                            ? (float)$data['precio_maximo_regulado'] : null,
-                'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
-                'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
-                'imagen'             => $data['imagen'] ?? '',
-                'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
-                'unidad_medida'      => $data['unidad_medida'] ?? '',
-                'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
-            ]
-        );
+
+        $params = [
+            'barras1'            => $data['codigo_barras_1'] ?? '',
+            'barras2'            => $data['codigo_barras_2'] ?? '',
+            'barras3'            => $data['codigo_barras_3'] ?? '',
+            'descripcion'        => $data['descripcion'],
+            'presentacion'       => $data['presentacion'] ?? '',
+            'marca'              => $data['marca'] ?? '',
+            'proveedor'          => ($data['id_proveedor'] ?? null) ?: null,
+            'categoria'          => ($data['id_categoria'] ?? null) ?: null,
+            'iva'                => ($data['id_iva'] ?? null) ?: null,
+            'seccion'            => ($data['id_seccion'] ?? null) ?: null,
+            'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
+            'fraccion'           => (int)($data['fraccion'] ?? 0),
+            'compra'             => $data['valor_compra'] ?? 0,
+            'venta'              => $data['valor_venta'] ?? 0,
+            'unidad'             => $data['valor_unidad'] ?? 0,
+            'tope'               => (isset($data['precio_maximo_regulado']) && $data['precio_maximo_regulado'] !== '' && $data['precio_maximo_regulado'] !== null)
+                                        ? (float)$data['precio_maximo_regulado'] : null,
+            'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
+            'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
+            'imagen'             => $data['imagen'] ?? '',
+            'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
+            'unidad_medida'      => $data['unidad_medida'] ?? '',
+            'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
+        ];
+
+        $sql = "INSERT INTO vb_productos 
+                    (codigo, codigo_barras_1, codigo_barras_2, codigo_barras_3,
+                     descripcion, presentacion, marca, id_proveedor, id_categoria,
+                     id_iva, id_seccion, unidad_cerrada, fraccion,
+                     valor_compra, valor_venta, valor_unidad, precio_maximo_regulado, rentabilidad, stock_minimo, imagen,
+                     tipo_venta, unidad_medida, cantidad_por_unidad)
+                 VALUES 
+                    (:codigo, :barras1, :barras2, :barras3,
+                     :descripcion, :presentacion, :marca, :proveedor, :categoria,
+                     :iva, :seccion, :unidad_cerrada, :fraccion,
+                     :compra, :venta, :unidad, :tope, :rentabilidad, :stock_minimo, :imagen,
+                     :tipo_venta, :unidad_medida, :cantidad_por_unidad)";
+
+        // El código lo asigna el sistema. Si dos productos se crean al mismo
+        // tiempo y el consecutivo se cruza, se recalcula y se reintenta.
+        $productoId = null;
+        for ($intento = 1; $intento <= 3; $intento++) {
+            try {
+                $params['codigo'] = ($intento === 1)
+                    ? $this->resolverCodigo($data['codigo'] ?? null)
+                    : $this->siguienteCodigo();
+
+                $productoId = $this->db->insert($sql, $params);
+                break;
+            } catch (\RuntimeException $e) {
+                throw $e; // código repetido enviado a mano: error claro para el usuario
+            } catch (\Throwable $e) {
+                if ($intento >= 3 || strpos($e->getMessage(), 'uq_prod_codigo') === false) {
+                    throw $e;
+                }
+            }
+        }
+
+        if ($productoId === null) {
+            throw new \RuntimeException('No se pudo asignar un código al producto. Intente de nuevo.');
+        }
 
         // Crear registro en inventario
         $this->db->insert(
@@ -269,7 +340,6 @@ class Producto
             : ($antes['precio_maximo_regulado'] ?? null);
 
         $sql = "UPDATE vb_productos SET 
-                    codigo = :codigo,
                     codigo_barras_1 = :barras1,
                     codigo_barras_2 = :barras2,
                     codigo_barras_3 = :barras3,
@@ -296,17 +366,16 @@ class Producto
 
         $afectados = $this->db->executeAffected($sql, [
             'id'                 => $id,
-            'codigo'             => $data['codigo'],
             'barras1'            => $data['codigo_barras_1'] ?? '',
             'barras2'            => $data['codigo_barras_2'] ?? '',
             'barras3'            => $data['codigo_barras_3'] ?? '',
             'descripcion'        => $data['descripcion'],
             'presentacion'       => $data['presentacion'] ?? '',
             'marca'              => $data['marca'] ?? '',
-            'proveedor'          => $data['id_proveedor'] ?: null,
-            'categoria'          => $data['id_categoria'] ?: null,
-            'iva'                => $data['id_iva'] ?: null,
-            'seccion'            => $data['id_seccion'] ?: null,
+            'proveedor'          => ($data['id_proveedor'] ?? null) ?: null,
+            'categoria'          => ($data['id_categoria'] ?? null) ?: null,
+            'iva'                => ($data['id_iva'] ?? null) ?: null,
+            'seccion'            => ($data['id_seccion'] ?? null) ?: null,
             'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
             'fraccion'           => (int)($data['fraccion'] ?? 0),
             'compra'             => $compra,

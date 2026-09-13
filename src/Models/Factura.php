@@ -42,6 +42,103 @@ class Factura
     }
 
     /**
+     * Normaliza y valida los pagos de una factura.
+     *
+     * Acepta pagos fraccionados: varias formas de pago en la misma venta.
+     *   $data['pagos'] = [ ['metodo' => 'NEQUI', 'monto' => 10000], ... ]
+     *
+     * Si no llega el arreglo, se arma un solo pago con la forma de pago de siempre.
+     *
+     * Reglas:
+     *   - La suma de los pagos debe cubrir el total de la factura.
+     *   - El cambio sale del efectivo recibido, para que los pagos guardados
+     *     sumen exactamente el total y los reportes por método cuadren.
+     *
+     * @return array ['pagos' => array, 'recibido' => float, 'cambio' => float, 'resumen' => string]
+     */
+    private function procesarPagos(array $data, float $totalPagar): array
+    {
+        $pagos = [];
+        $brutos = $data['pagos'] ?? null;
+
+        if (is_array($brutos) && count($brutos)) {
+            foreach ($brutos as $p) {
+                if (!is_array($p)) continue;
+
+                $metodo = strtoupper(trim((string)($p['metodo'] ?? '')));
+                $monto  = round((float)($p['monto'] ?? 0), 2);
+
+                if ($metodo === '' || $monto <= 0) continue;
+
+                $ref = isset($p['referencia']) ? trim((string)$p['referencia']) : '';
+
+                $pagos[] = [
+                    'metodo'     => mb_substr($metodo, 0, 50),
+                    'monto'      => $monto,
+                    'referencia' => $ref !== '' ? mb_substr($ref, 0, 100) : null,
+                ];
+            }
+        }
+
+        // Compatibilidad: sin arreglo, se usa la forma de pago única
+        if (!$pagos) {
+            $metodo = strtoupper(trim((string)($data['tipo_pago'] ?? ''))) ?: 'EFECTIVO';
+            $monto  = round((float)($data['pago_recibido'] ?? 0), 2);
+            if ($monto <= 0) {
+                $monto = round($totalPagar, 2);
+            }
+
+            $pagos[] = [
+                'metodo'     => mb_substr($metodo, 0, 50),
+                'monto'      => $monto,
+                'referencia' => null,
+            ];
+        }
+
+        $recibido = round(array_sum(array_column($pagos, 'monto')), 2);
+
+        // El cliente tiene que cubrir el total
+        if ($totalPagar > 0 && $recibido + 0.01 < $totalPagar) {
+            throw new \RuntimeException(
+                'Los pagos suman $' . number_format($recibido, 0, ',', '.') .
+                ' y la factura es de $' . number_format($totalPagar, 0, ',', '.') .
+                '. Faltan $' . number_format($totalPagar - $recibido, 0, ',', '.') . '.'
+            );
+        }
+
+        $cambio = round(max(0, $recibido - $totalPagar), 2);
+
+        if ($cambio > 0) {
+            // El cambio sale del efectivo; si no hay efectivo, del primer pago
+            $idx = 0;
+            foreach ($pagos as $i => $p) {
+                if ($p['metodo'] === 'EFECTIVO') { $idx = $i; break; }
+            }
+
+            $nuevoMonto = round($pagos[$idx]['monto'] - $cambio, 2);
+
+            if ($nuevoMonto <= 0) {
+                throw new \RuntimeException(
+                    'El cambio ($' . number_format($cambio, 0, ',', '.') . ') es mayor que lo recibido en ' .
+                    $pagos[$idx]['metodo'] . '. Revise los montos.'
+                );
+            }
+
+            $pagos[$idx]['monto'] = $nuevoMonto;
+        }
+
+        $metodos = array_values(array_unique(array_column($pagos, 'metodo')));
+        $resumen = count($metodos) > 1 ? 'MIXTO' : $metodos[0];
+
+        return [
+            'pagos'    => $pagos,
+            'recibido' => $recibido,
+            'cambio'   => $cambio,
+            'resumen'  => $resumen,
+        ];
+    }
+
+    /**
      * Crear factura (cabecera + detalle) en transacción
      */
     public function crear(array $data, array $detalles, int $idVendedor): array
@@ -88,8 +185,13 @@ class Factura
             $total = $subtotal + $totalIva;
             $descuento = (float)($data['descuento'] ?? 0);
             $totalPagar = $total - $descuento;
-            $pagoRecibido = (float)($data['pago_recibido'] ?? $totalPagar);
-            $cambio = max(0, $pagoRecibido - $totalPagar);
+
+            // Pagos fraccionados: el cliente puede pagar con varias formas
+            $infoPagos    = $this->procesarPagos($data, $totalPagar);
+            $pagos        = $infoPagos['pagos'];
+            $pagoRecibido = $infoPagos['recibido'];
+            $cambio       = $infoPagos['cambio'];
+            $tipoPago     = $infoPagos['resumen'];
 
             // Insertar factura
             $idFactura = $this->db->insert(
@@ -110,7 +212,7 @@ class Factura
                     'fecha' => date('Y-m-d'),
                     'hora'  => date('H:i:s'),
                     'tipo'  => $tipo,
-                    'tpago' => $data['tipo_pago'] ?? 'EFECTIVO',
+                    'tpago' => $tipoPago,
                     'sub'   => $subtotal,
                     'iva'   => $totalIva,
                     'total' => $totalPagar,
@@ -226,14 +328,31 @@ class Factura
                 }
             }
 
+            // Detalle de los pagos: uno por cada forma con que pagó el cliente
+            foreach ($pagos as $p) {
+                $this->db->insert(
+                    "INSERT INTO vb_facturas_pagos (id_factura, metodo, monto, referencia, id_usuario, created_at)
+                     VALUES (:fac, :metodo, :monto, :ref, :uid, NOW())",
+                    [
+                        'fac'    => $idFactura,
+                        'metodo' => $p['metodo'],
+                        'monto'  => $p['monto'],
+                        'ref'    => $p['referencia'],
+                        'uid'    => $idVendedor,
+                    ]
+                );
+            }
+
             $this->db->commit();
 
             return [
-                'success'   => true,
-                'id_factura'=> $idFactura,
-                'codigo'    => $codigo,
-                'total'     => $totalPagar,
-                'cambio'    => $cambio,
+                'success'    => true,
+                'id_factura' => $idFactura,
+                'codigo'     => $codigo,
+                'total'      => $totalPagar,
+                'cambio'     => $cambio,
+                'tipo_pago'  => $tipoPago,
+                'pagos'      => $pagos,
             ];
 
         } catch (\Exception $e) {
@@ -281,6 +400,17 @@ class Factura
         );
 
         $factura['detalles'] = $detalles;
+
+        // Detalle de pagos: sirve para mostrar el desglose cuando la venta se
+        // pagó con varias formas (efectivo + Nequi, por ejemplo)
+        $factura['pagos'] = $this->db->select(
+            "SELECT id_pago, metodo, monto, referencia, created_at
+             FROM vb_facturas_pagos
+             WHERE id_factura = :id
+             ORDER BY id_pago ASC",
+            ['id' => $id]
+        );
+
         return $factura;
     }
 

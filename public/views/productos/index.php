@@ -101,8 +101,13 @@
                     <div class="row g-3">
                         <!-- Código -->
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold">Código <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="codigo" id="p_codigo" required>
+                            <label class="form-label fw-semibold">
+                                Código
+                                <i class="fas fa-magic text-muted" title="El sistema asigna un número consecutivo automáticamente. No se puede cambiar."></i>
+                            </label>
+                            <input type="text" class="form-control bg-light" name="codigo" id="p_codigo" readonly
+                                   inputmode="numeric" placeholder="Se asigna automáticamente">
+                            <small class="text-muted" id="p_codigo_ayuda">Automático (solo números)</small>
                         </div>
                         <!-- Códigos de barras -->
                         <div class="col-md-4">
