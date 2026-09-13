@@ -39,6 +39,8 @@ return [
         'inventario.ver'              => [0, 1, 2, 3],
         'inventario.ajustar'          => [0, 2, 3],
         'inventario.ingresar'         => [0, 2, 3],
+        'inventario.ver_cierre'       => [0, 2, 3],
+        'inventario.cerrar'           => [0, 3],
 
         // Productos
         'productos.crear'             => [0, 2, 3],

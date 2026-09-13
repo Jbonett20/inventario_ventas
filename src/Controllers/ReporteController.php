@@ -13,7 +13,14 @@ class ReporteController
 
     public function index(Request $r): string
     {
-        return (new View())->render('reportes/index', ['title' => 'Reportes']);
+        $session = \SIG\Core\Session::getInstance();
+
+        return (new View())->render('reportes/index', [
+            'title'      => 'Reportes',
+            'username'   => $session->get('username'),
+            'userTipo'   => $session->getUserType(),
+            'userImagen' => $session->get('user_imagen'),
+        ]);
     }
 
     /**
@@ -82,11 +89,16 @@ class ReporteController
         $inicio = $r->get('inicio', date('Y-m-01'));
         $fin    = $r->get('fin', date('Y-m-d'));
 
+        // Se agrupa por el DETALLE de pagos: así una venta pagada con parte en
+        // efectivo y parte en Nequi reparte su valor entre los dos métodos.
         $data = $this->db->select(
-            "SELECT tipo_pago, COUNT(*) AS cantidad, COALESCE(SUM(total),0) AS total
-             FROM vb_facturas
-             WHERE fecha BETWEEN :ini AND :fin AND estado = 'ACTIVA'
-             GROUP BY tipo_pago ORDER BY total DESC",
+            "SELECT pg.metodo AS tipo_pago,
+                    COUNT(DISTINCT pg.id_factura) AS cantidad,
+                    COALESCE(SUM(pg.monto), 0) AS total
+             FROM vb_facturas_pagos pg
+             JOIN vb_facturas f ON f.id_factura = pg.id_factura
+             WHERE f.fecha BETWEEN :ini AND :fin AND f.estado = 'ACTIVA'
+             GROUP BY pg.metodo ORDER BY total DESC",
             ['ini' => $inicio, 'fin' => $fin]
         );
 

@@ -101,9 +101,11 @@ class PlanSepareController
              FROM vb_productos p
              LEFT JOIN vb_inventario i ON p.id_producto = i.id_producto
              WHERE p.activo = 1
-               AND (p.descripcion LIKE :q1 OR p.codigo LIKE :q2 OR p.codigo_barras_1 LIKE :q3)
+               AND (p.descripcion LIKE :q1 OR p.codigo LIKE :q2
+                    OR p.codigo_barras_1 LIKE :q3 OR p.codigo_barras_2 LIKE :q4
+                    OR p.codigo_barras_3 LIKE :q5)
              ORDER BY p.descripcion ASC LIMIT 20",
-            ['q1' => "%{$q}%", 'q2' => "%{$q}%", 'q3' => "%{$q}%"]
+            ['q1' => "%{$q}%", 'q2' => "%{$q}%", 'q3' => "%{$q}%", 'q4' => "%{$q}%", 'q5' => "%{$q}%"]
         );
         Response::success($productos);
     }

@@ -164,6 +164,16 @@ $router->get('/inventario/sugerencias-reorden','InventarioController@sugerencias
 $router->get('/inventario/movimientos/{id}','InventarioController@movimientos', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/inventario/movimientos-por-fecha','InventarioController@movimientosPorFecha', ['SIG\Middleware\AuthMiddleware']);
 
+// ---- Cierre de inventario (por periodos) ----
+$router->get('/inventario/cierres',              'CierreInventarioController@listar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/inventario/cierres/rango',        'CierreInventarioController@rango', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/inventario/cierres/calcular',     'CierreInventarioController@calcular', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/inventario/cierres/detalle',      'CierreInventarioController@detalle', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/inventario/cierres/cerrar',      'CierreInventarioController@cerrar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/inventario/cierres/programar',   'CierreInventarioController@programar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/inventario/cierres/ejecutar',    'CierreInventarioController@ejecutar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/inventario/cierres/anular',      'CierreInventarioController@anular', ['SIG\Middleware\AuthMiddleware']);
+
 // ---- Ingresos ----
 $router->get('/ingresos',             'IngresoController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/ingresos/listar',      'IngresoController@listar', ['SIG\Middleware\AuthMiddleware']);
@@ -216,6 +226,8 @@ $router->get('/creditos',             'CreditoController@index', ['SIG\Middlewar
 $router->get('/creditos/listar',      'CreditoController@listar', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/creditos/guardar',    'CreditoController@store', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/creditos/abonar',     'CreditoController@abonar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/creditos/inhabilitar','CreditoController@inhabilitar', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/creditos/reactivar',  'CreditoController@reactivar', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/creditos/abonos/{id}', 'CreditoController@abonos', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Egresos ----

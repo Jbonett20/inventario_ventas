@@ -572,9 +572,11 @@ class Ingreso
             "SELECT p.*, inv.unidad, inv.fraccion AS stock_fraccion
              FROM vb_productos p
              LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
-             WHERE p.activo = 1 AND (p.codigo LIKE :q1 OR p.descripcion LIKE :q2)
+             WHERE p.activo = 1 AND (p.codigo LIKE :q1 OR p.descripcion LIKE :q2
+                  OR p.codigo_barras_1 LIKE :q3 OR p.codigo_barras_2 LIKE :q4
+                  OR p.codigo_barras_3 LIKE :q5)
              ORDER BY p.descripcion ASC LIMIT 20",
-            ['q1' => "%{$q}%", 'q2' => "%{$q}%"]
+            ['q1' => "%{$q}%", 'q2' => "%{$q}%", 'q3' => "%{$q}%", 'q4' => "%{$q}%", 'q5' => "%{$q}%"]
         );
     }
 

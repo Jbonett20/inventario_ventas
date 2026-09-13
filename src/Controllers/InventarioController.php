@@ -25,6 +25,8 @@ class InventarioController
             'title' => 'Inventario',
             'resumen' => $this->model->resumen(),
             'stockBajo' => $this->model->stockBajo(),
+            'puedeVerCierre' => \SIG\Middleware\RoleMiddleware::hasPermission('inventario.ver_cierre'),
+            'puedeCerrar'    => \SIG\Middleware\RoleMiddleware::hasPermission('inventario.cerrar'),
             'username'   => $this->session->get('username'),
             'userTipo'   => $this->session->getUserType(),
             'userImagen' => $this->session->get('user_imagen'),

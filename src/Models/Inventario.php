@@ -19,8 +19,11 @@ class Inventario
         $params = [];
 
         if (!empty($search)) {
-            $where .= " AND (p.codigo LIKE :s1 OR p.descripcion LIKE :s2 OR p.codigo_barras_1 LIKE :s3)";
-            $params['s1'] = "%{$search}%"; $params['s2'] = "%{$search}%"; $params['s3'] = "%{$search}%";
+            $where .= " AND (p.codigo LIKE :s1 OR p.descripcion LIKE :s2
+                          OR p.codigo_barras_1 LIKE :s4 OR p.codigo_barras_2 LIKE :s5
+                          OR p.codigo_barras_3 LIKE :s6)";
+            $params['s1'] = "%{$search}%"; $params['s2'] = "%{$search}%";
+            $params['s4'] = "%{$search}%"; $params['s5'] = "%{$search}%"; $params['s6'] = "%{$search}%";
         }
 
         $sql = "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion, p.fraccion,

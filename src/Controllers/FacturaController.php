@@ -140,6 +140,7 @@ class FacturaController
                     'tipo_pago'    => $data['tipo_pago'] ?? 'EFECTIVO',
                     'descuento'    => (float)($data['descuento'] ?? 0),
                     'pago_recibido'=> (float)($data['pago_recibido'] ?? 0),
+                    'pagos'        => is_array($data['pagos'] ?? null) ? $data['pagos'] : null,
                     'tipo'         => $data['tipo'] ?? 'NORMAL',
                     'id_vendedor_registrado' => (int)($data['id_vendedor_registrado'] ?? 0) ?: null,
                 ],
@@ -155,7 +156,7 @@ class FacturaController
             Response::success($result, 'Factura creada exitosamente');
 
         } catch (\Exception $e) {
-            Response::error('Error al crear factura: ' . $e->getMessage(), 500);
+            Response::error('Error al crear factura: ' . $e->getMessage(), 422);
         }
     }
 
@@ -234,7 +235,6 @@ class FacturaController
         $html .= '<strong>Vendedor:</strong> ' . htmlspecialchars($factura['vendedor_nombre'] ?? '') . '<br>';
         $html .= '<strong>Pago:</strong> ' . htmlspecialchars($factura['tipo_pago'] ?? '');
         $html .= '</div>';
-
         $html .= '<div class="divider"></div>';
 
         // Tabla de productos
@@ -272,6 +272,16 @@ class FacturaController
             $html .= '<tr><td style="color:#c00">Descuento:</td><td style="text-align:right;color:#c00">-$' . number_format($factura['descuento'], 0, ',', '.') . '</td></tr>';
         }
         $html .= '<tr class="total-row"><td>TOTAL:</td><td style="text-align:right">$' . number_format($factura['total'] ?? 0, 0, ',', '.') . '</td></tr>';
+
+        // Detalle de pagos (cuando la venta se pagó con varias formas)
+        $pagosFac = $factura['pagos'] ?? [];
+        if (count($pagosFac) > 1) {
+            foreach ($pagosFac as $pg) {
+                $html .= '<tr><td style="font-size:7px">' . htmlspecialchars($pg['metodo']) . ':</td>' .
+                         '<td style="text-align:right;font-size:7px">$' . number_format($pg['monto'] ?? 0, 0, ',', '.') . '</td></tr>';
+            }
+        }
+
         if (($factura['pago_recibido'] ?? 0) > 0) {
             $html .= '<tr><td>Recibido:</td><td style="text-align:right">$' . number_format($factura['pago_recibido'] ?? 0, 0, ',', '.') . '</td></tr>';
             $html .= '<tr><td>Cambio:</td><td style="text-align:right">$' . number_format($factura['cambio'] ?? 0, 0, ',', '.') . '</td></tr>';
