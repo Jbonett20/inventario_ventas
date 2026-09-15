@@ -20,6 +20,30 @@
 /* ==== Formularios ==== */
 .form-control:focus, .form-select:focus { border-color: #8e24aa !important; box-shadow: 0 0 0 3px rgba(142,36,170,0.15) !important; }
 
+/* ==== Modales con <form> envolviendo body/footer (scroll vertical) ==== */
+/* Bootstrap pone max-height + overflow:hidden en .modal-content cuando se usa
+   .modal-dialog-scrollable. Si dentro hay un <form> que envuelve el body y el
+   footer, ese form no se encoge (min-height:auto) y el contenido se recorta:
+   el botón Guardar queda fuera de la pantalla. Convertimos el form en un
+   contenedor flex que sí puede encogerse para que .modal-body haga scroll. */
+.modal-dialog-scrollable .modal-content > form {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.modal-dialog-scrollable .modal-content > form > .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+.modal-dialog-scrollable .modal-content > form > .modal-footer {
+    flex: 0 0 auto;
+}
+
 /* ==== Scrollbar personalizada ==== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
