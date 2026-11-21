@@ -13,6 +13,7 @@ class Credito
      *
      * @param string $estado Filtro: '' o 'TODOS' = todos, 'INHABILITADOS' = solo los
      *                       inhabilitados, o el nombre exacto del estado.
+     * @return array<string, mixed>
      */
     public function listar(int $page = 1, int $perPage = 25, string $estado = ''): array
     {
@@ -71,6 +72,8 @@ class Credito
 
     /**
      * Obtener un crédito con los datos del cliente
+     *
+     * @return array<string, mixed>|null
      */
     public function obtener(int $id): ?array
     {
@@ -83,6 +86,7 @@ class Credito
         );
     }
 
+    /** @param array<string, mixed> $d */
     public function crear(array $d, int $idUsuario): int
     {
         $codigo = 'CRE-' . date('Ymd') . '-' . rand(100, 999);
@@ -99,39 +103,55 @@ class Credito
 
     public function abonar(int $idCredito, float $valor, int $idUsuario): void
     {
-        $credito = $this->obtener($idCredito);
-        if (!$credito) {
-            throw new \RuntimeException('El crédito no existe');
-        }
-        if ($credito['estado'] === 'INHABILITADO') {
-            throw new \RuntimeException('Este crédito está inhabilitado: reactívelo antes de registrar abonos.');
-        }
-        if ($valor <= 0) {
+        $valor = round($valor, 2);
+        if ($idCredito <= 0 || !is_finite($valor) || $valor <= 0) {
             throw new \RuntimeException('El valor del abono debe ser mayor a cero');
         }
 
         $this->db->beginTransaction();
         try {
+            $credito = $this->db->fetchOne(
+                'SELECT saldo_pendiente, estado FROM vb_creditos WHERE id_credito = :id FOR UPDATE',
+                ['id' => $idCredito]
+            );
+            if ($credito === null) {
+                throw new \RuntimeException('El crédito no existe');
+            }
+            if ($credito['estado'] === 'INHABILITADO') {
+                throw new \RuntimeException('Este crédito está inhabilitado: reactívelo antes de registrar abonos.');
+            }
+
+            $saldo = round(max(0, (float)$credito['saldo_pendiente']), 2);
+            if ($saldo <= 0.01) {
+                throw new \RuntimeException('El crédito ya está pagado.');
+            }
+            if ($valor > $saldo + 0.009) {
+                throw new \RuntimeException('El abono no puede superar el saldo pendiente de $' . number_format($saldo, 0, ',', '.') . '.');
+            }
+
             $this->db->insert(
                 "INSERT INTO vb_creditos_abonos (id_credito, valor, fecha, id_usuario) VALUES (:id, :val, CURDATE(), :uid)",
                 ['id' => $idCredito, 'val' => $valor, 'uid' => $idUsuario]
             );
             $this->db->executeAffected(
-                "UPDATE vb_creditos SET saldo_pendiente = saldo_pendiente - :val WHERE id_credito = :id",
+                "UPDATE vb_creditos SET saldo_pendiente = GREATEST(0, saldo_pendiente - :val) WHERE id_credito = :id",
                 ['val' => $valor, 'id' => $idCredito]
             );
             // Si saldo llega a 0, marcar como pagado
             $cred = $this->db->fetchOne("SELECT saldo_pendiente FROM vb_creditos WHERE id_credito = :id", ['id' => $idCredito]);
-            if ($cred && $cred['saldo_pendiente'] <= 0) {
+            if ($cred && $cred['saldo_pendiente'] <= 0.01) {
                 $this->db->executeAffected("UPDATE vb_creditos SET estado = 'PAGADO' WHERE id_credito = :id", ['id' => $idCredito]);
             }
             $this->db->commit();
-        } catch (\Exception $e) {
-            $this->db->rollback();
+        } catch (\Throwable $e) {
+            if ($this->db->getConnection()->inTransaction()) {
+                $this->db->rollback();
+            }
             throw $e;
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function abonos(int $idCredito): array
     {
         return $this->db->select(

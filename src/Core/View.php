@@ -12,8 +12,10 @@ use RuntimeException;
 class View
 {
     private string $viewsPath;
+    /** @var array<string, string> */
     private array $sections = [];
     private string $currentSection = '';
+    /** @var array<string, mixed> */
     private static array $globalStaticData = [];
 
     public function __construct()
@@ -43,7 +45,7 @@ class View
      * Renderizar una vista con layout
      * 
      * @param string $view   Nombre de la vista (ej: 'facturacion/index')
-     * @param array  $data   Datos para la vista
+     * @param array<string, mixed> $data Datos para la vista
      * @param string $layout Nombre del layout (null = sin layout)
      * @return string HTML renderizado
      */
@@ -71,6 +73,8 @@ class View
 
     /**
      * Renderizar una vista parcial (sin layout)
+     *
+     * @param array<string, mixed> $data
      */
     public function partial(string $view, array $data = []): string
     {
@@ -79,6 +83,8 @@ class View
 
     /**
      * Renderizar el contenido de una vista
+     *
+     * @param array<string, mixed> $data
      */
     private function renderView(string $view, array $data): string
     {
@@ -118,7 +124,8 @@ class View
     public function endSection(): void
     {
         if ($this->currentSection) {
-            $this->sections[$this->currentSection] = ob_get_clean();
+            $content = ob_get_clean();
+            $this->sections[$this->currentSection] = $content === false ? '' : $content;
             $this->currentSection = '';
         }
     }
@@ -144,6 +151,8 @@ class View
 
     /**
      * Formatear número como moneda
+     *
+     * @param mixed $value
      */
     public static function money($value): string
     {

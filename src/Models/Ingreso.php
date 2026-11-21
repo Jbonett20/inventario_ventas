@@ -2,18 +2,25 @@
 namespace SIG\Models;
 
 use SIG\Core\Database;
+use DateTimeImmutable;
 
 class Ingreso
 {
     private Database $db;
 
-    /** Último cálculo de precios aplicado (para informar al usuario) */
+    /**
+     * Último cálculo de precios aplicado (para informar al usuario).
+     *
+     * @var array<string, mixed>|null
+     */
     public ?array $ultimoCalculo = null;
 
     public function __construct() { $this->db = Database::getInstance(); }
 
     /**
      * Listar ingresos
+     *
+     * @return array<string, mixed>
      */
     public function listar(int $page = 1, int $perPage = 25): array
     {
@@ -60,6 +67,7 @@ class Ingreso
      *
      * @return array Detalle completo del cálculo (para previsualizar y para el historial)
      */
+    /** @return array<string, mixed> */
     public function calcularPreciosIngreso(int $idProducto, float $precioCompra, int $cantidadNueva, ?int $stockAntes = null): array
     {
         $p = $this->db->fetchOne(
@@ -159,6 +167,7 @@ class Ingreso
      *
      * @return array Resultado del cálculo (mismo formato de calcularPreciosIngreso)
      */
+    /** @return array<string, mixed> */
     public function aplicarPreciosIngreso(int $idProducto, float $precioCompra, int $cantidadNueva, int $stockAntes, ?int $idUsuario = null, ?int $idIngreso = null, string $motivo = '', string $origen = 'INGRESO'): array
     {
         $calc = $this->calcularPreciosIngreso($idProducto, $precioCompra, $cantidadNueva, $stockAntes);
@@ -209,6 +218,7 @@ class Ingreso
      * Guarda una fila en la bitácora de precios. NUNCA se borra ni se edita:
      * es la trazabilidad para contabilidad.
      */
+    /** @param array<string, mixed> $h */
     public function registrarHistorial(array $h): int
     {
         return $this->db->insert(
@@ -246,6 +256,7 @@ class Ingreso
      * @param int      $idProducto
      * @param int|null $excluirIngreso Ingreso que NO debe contarse (el que se está anulando)
      */
+    /** @return array<string, mixed>|null */
     public function costoPromedioDeCompras(int $idProducto, ?int $excluirIngreso = null): ?array
     {
         $sql = "SELECT COALESCE(SUM(cantidad_unidad * valor_compra), 0) AS total,
@@ -285,6 +296,7 @@ class Ingreso
      *
      * @return array|null Detalle del cambio, o null si no había nada que revertir
      */
+    /** @return array<string, mixed>|null */
     public function revertirPreciosPorIngreso(int $idProducto, int $idIngreso, ?int $idUsuario = null, string $motivoExtra = ''): ?array
     {
         $actual = $this->db->fetchOne(
@@ -387,6 +399,7 @@ class Ingreso
     /**
      * Historial de cambios de precio de un producto (lo más nuevo primero)
      */
+    /** @return list<array<string, mixed>> */
     public function historial(int $idProducto, int $limit = 100): array
     {
         return $this->db->select(
@@ -404,6 +417,7 @@ class Ingreso
      * Historial de compras de un producto: cuánto costaba antes y cuánto ahora.
      * Se apoya solo en ingresos que tengan precio de compra registrado.
      */
+    /** @return list<array<string, mixed>> */
     public function historialCompras(int $idProducto): array
     {
         return $this->db->select(
@@ -423,6 +437,7 @@ class Ingreso
      * Resumen de costos de compra de un producto:
      * primera compra, última compra y costo promedio vigente.
      */
+    /** @return array<string, mixed> */
     public function resumenCostos(int $idProducto): array
     {
         $primera = $this->db->fetchOne(
@@ -463,6 +478,7 @@ class Ingreso
      * Soporta conversión cajas ↔ unidades según tipo_cantidad
      * Aplica precio promedio ponderado si el precio de compra cambia
      */
+    /** @param array<string, mixed> $data */
     public function crear(array $data, int $idUsuario): int
     {
         $idProducto = (int)($data['id_producto'] ?? 0);
@@ -486,14 +502,26 @@ class Ingreso
         // ingreso es por cajas el promedio también se hace en cajas.
         $cantParaPromedio = $cantUnd;
 
-        if ($tipoCant === 'CAJA') {
+        if ($tipoCant === 'CAJA' || $tipoCant === 'CAJA_UND') {
             $undPorCaja = (int)($prod['unidad_cerrada'] ?? 1);
             if ($undPorCaja < 1) $undPorCaja = 1;
             $totalUnd = $cantUnd * $undPorCaja;
-            $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por cajas: {$cantUnd} cajas × {$undPorCaja} und = {$totalUnd} und"
-                 . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por caja';
-            $cantParaPromedio = $cantUnd; // el precio es por caja
+            if ($tipoCant === 'CAJA_UND') {
+                // Cajas completas + unidades internas sueltas en el mismo ingreso.
+                // El precio de compra se toma como costo de la unidad interna.
+                $totalUnd += $cantFrac;
+                $cantParaPromedio = $totalUnd;
+                $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por cajas y unidades: {$cantUnd} cajas × {$undPorCaja} und"
+                     . ($cantFrac > 0 ? " + {$cantFrac} und sueltas" : '')
+                     . " = {$totalUnd} und"
+                     . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por unidad interna';
+            } else {
+                $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por cajas: {$cantUnd} cajas × {$undPorCaja} und = {$totalUnd} und"
+                     . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por caja';
+                $cantParaPromedio = $cantUnd; // el precio es por caja
+            }
             $cantUnd = $totalUnd;
+            $cantFrac = 0;
         } else {
             $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por unidades: {$cantUnd} und"
                  . ($cantFrac > 0 ? " + {$cantFrac} frac" : '')
@@ -566,6 +594,7 @@ class Ingreso
     /**
      * Buscar productos para ingreso
      */
+    /** @return list<array<string, mixed>> */
     public function buscarProductos(string $q): array
     {
         return $this->db->select(
@@ -583,6 +612,7 @@ class Ingreso
     /**
      * Listar facturas de compra (ingreso por factura)
      */
+    /** @return list<array<string, mixed>> */
     public function listarFacturasCompra(): array
     {
         return $this->listarFacturas('TODAS');
@@ -597,10 +627,19 @@ class Ingreso
      *
      * @param string $filtro TODAS | PENDIENTES | APLICADAS
      */
-    public function listarFacturas(string $filtro = 'TODAS', string $buscar = ''): array
+    /** @return list<array<string, mixed>> */
+    public function listarFacturas(string $filtro = 'TODAS', string $buscar = '', string $estadoPago = ''): array
     {
         $where  = [];
         $params = [];
+        $totalFacturaSql = "(SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(NULLIF(d.valor_compra, 0), p.valor_compra)), 0)
+            FROM vb_ingresos_detalle_factura d
+            JOIN vb_productos p ON p.id_producto = d.id_producto
+            WHERE d.id_ingreso_factura = f.id_ingreso_factura)";
+        $totalPagadoSql = "(SELECT COALESCE(SUM(pg.monto), 0)
+            FROM vb_ingresos_factura_pagos pg
+            WHERE pg.id_ingreso_factura = f.id_ingreso_factura)";
+        $saldoPendienteSql = "GREATEST({$totalFacturaSql} - {$totalPagadoSql}, 0)";
 
         if ($filtro === 'PENDIENTES') {
             $where[] = 'f.estado = 0';
@@ -613,16 +652,35 @@ class Ingreso
             $params['buscar'] = "%{$buscar}%";
         }
 
+        $estadoPago = strtoupper(trim($estadoPago));
+        if ($estadoPago !== '' && $estadoPago !== 'TODOS') {
+            if (!in_array($estadoPago, ['PENDIENTE', 'PAGADA', 'EN MORA'], true)) {
+                throw new \InvalidArgumentException('El estado de pago seleccionado no es válido.');
+            }
+
+            if ($estadoPago === 'PAGADA') {
+                $where[] = "{$totalFacturaSql} > 0.01 AND {$saldoPendienteSql} <= 0.01";
+            } elseif ($estadoPago === 'EN MORA') {
+                $where[] = "{$saldoPendienteSql} > 0.01
+                    AND f.fecha_vencimiento IS NOT NULL AND f.fecha_vencimiento < CURDATE()";
+            } else {
+                $where[] = "({$totalFacturaSql} <= 0.01 OR ({$saldoPendienteSql} > 0.01
+                    AND (f.fecha_vencimiento IS NULL OR f.fecha_vencimiento >= CURDATE())))";
+            }
+        }
+
         $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        return $this->db->select(
+        $facturas = $this->db->select(
             "SELECT f.*, prov.nombre AS proveedor_nombre,
                     (SELECT COUNT(*) FROM vb_ingresos_detalle_factura d
                       WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_productos,
                     (SELECT COALESCE(SUM(d.cantidad_unidad), 0) FROM vb_ingresos_detalle_factura d
                       WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_unidad,
                     (SELECT COALESCE(SUM(d.cantidad_fraccion), 0) FROM vb_ingresos_detalle_factura d
-                      WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_fraccion
+                      WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_fraccion,
+                    {$totalFacturaSql} AS total_factura,
+                    {$totalPagadoSql} AS total_pagado
              FROM vb_ingresos_factura f
              LEFT JOIN vb_proveedores prov ON f.id_proveedor = prov.id_proveedor
              {$sqlWhere}
@@ -630,34 +688,72 @@ class Ingreso
              LIMIT 200",
             $params
         );
+        foreach ($facturas as &$factura) {
+            $factura = $this->agregarEstadoPagoFacturaCompra($factura);
+        }
+        unset($factura);
+
+        return $facturas;
+    }
+
+    /** @param array<string, mixed> $factura
+     *  @return array<string, mixed>
+     */
+    private function agregarEstadoPagoFacturaCompra(array $factura): array
+    {
+        $total = round(max(0, (float)($factura['total_factura'] ?? 0)), 2);
+        $pagado = round(min($total, max(0, (float)($factura['total_pagado'] ?? 0))), 2);
+        $saldo = round(max(0, $total - $pagado), 2);
+        $fechaVencimiento = $factura['fecha_vencimiento'] ?? null;
+
+        $factura['total_factura'] = $total;
+        $factura['total_pagado'] = $pagado;
+        $factura['saldo_pendiente'] = $saldo;
+        $factura['estado_pago'] = $total <= 0.01
+            ? 'PENDIENTE'
+            : ($saldo <= 0.01
+                ? 'PAGADA'
+                : ($fechaVencimiento !== null && $fechaVencimiento < date('Y-m-d') ? 'EN MORA' : 'PENDIENTE'));
+
+        return $factura;
     }
 
     /**
      * Obtener una factura de compra
      */
+    /** @return array<string, mixed>|null */
     public function obtenerFactura(int $id): ?array
     {
-        return $this->db->fetchOne(
-            "SELECT f.*, prov.nombre AS proveedor_nombre
+        $factura = $this->db->fetchOne(
+            "SELECT f.*, prov.nombre AS proveedor_nombre,
+                    (SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(NULLIF(d.valor_compra, 0), p.valor_compra)), 0)
+                     FROM vb_ingresos_detalle_factura d
+                     JOIN vb_productos p ON p.id_producto = d.id_producto
+                     WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_factura,
+                    (SELECT COALESCE(SUM(pg.monto), 0) FROM vb_ingresos_factura_pagos pg
+                     WHERE pg.id_ingreso_factura = f.id_ingreso_factura) AS total_pagado
              FROM vb_ingresos_factura f
              LEFT JOIN vb_proveedores prov ON f.id_proveedor = prov.id_proveedor
              WHERE f.id_ingreso_factura = :id",
             ['id' => $id]
         );
+        return $factura ? $this->agregarEstadoPagoFacturaCompra($factura) : null;
     }
 
     /**
      * Crear una factura de compra (cabecera)
      */
+    /** @param array<string, mixed> $data */
     public function crearFactura(array $data): int
     {
         return $this->db->insert(
-            "INSERT INTO vb_ingresos_factura (nombre_factura, id_proveedor, fecha, estado)
-             VALUES (:nombre, :prov, :fecha, 0)",
+            "INSERT INTO vb_ingresos_factura (nombre_factura, id_proveedor, fecha, fecha_vencimiento, estado)
+             VALUES (:nombre, :prov, :fecha, :vencimiento, 0)",
             [
                 'nombre' => $data['nombre_factura'],
                 'prov'   => !empty($data['id_proveedor']) ? (int)$data['id_proveedor'] : null,
                 'fecha'  => $data['fecha'] ?? date('Y-m-d'),
+                'vencimiento' => $this->validarFechaVencimientoCompra($data['fecha_vencimiento'] ?? null),
             ]
         );
     }
@@ -665,19 +761,134 @@ class Ingreso
     /**
      * Actualizar cabecera de una factura de compra
      */
+    /** @param array<string, mixed> $data */
     public function actualizarFactura(int $id, array $data): int
     {
         return $this->db->executeAffected(
             "UPDATE vb_ingresos_factura
-             SET nombre_factura = :nombre, id_proveedor = :prov, fecha = :fecha
+             SET nombre_factura = :nombre, id_proveedor = :prov, fecha = :fecha,
+                 fecha_vencimiento = :vencimiento
              WHERE id_ingreso_factura = :id",
             [
                 'nombre' => $data['nombre_factura'],
                 'prov'   => !empty($data['id_proveedor']) ? (int)$data['id_proveedor'] : null,
                 'fecha'  => $data['fecha'] ?? date('Y-m-d'),
+                'vencimiento' => $this->validarFechaVencimientoCompra($data['fecha_vencimiento'] ?? null),
                 'id'     => $id,
             ]
         );
+    }
+
+    private function validarFechaVencimientoCompra(mixed $fecha): ?string
+    {
+        if ($fecha === null || trim((string)$fecha) === '') {
+            return null;
+        }
+
+        $fecha = trim((string)$fecha);
+        $fechaValida = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
+        if (!$fechaValida || $fechaValida->format('Y-m-d') !== $fecha) {
+            throw new \RuntimeException('La fecha de vencimiento no es válida.');
+        }
+
+        return $fecha;
+    }
+
+    /** @return array<string, mixed> */
+    public function registrarPagoFacturaCompra(
+        int $idFactura,
+        float $monto,
+        string $metodo,
+        ?string $referencia,
+        int $idUsuario
+    ): array {
+        $metodo = strtoupper(trim($metodo));
+        $metodosPermitidos = ['EFECTIVO', 'NEQUI', 'DAVIPLATA', 'ADDI', 'TRANSFERENCIA', 'OTROS'];
+        $monto = round($monto, 2);
+        if ($idFactura <= 0 || !is_finite($monto) || $monto <= 0 || $monto > 999999999999.99) {
+            throw new \InvalidArgumentException('El monto de pago no es válido.');
+        }
+        if (!in_array($metodo, $metodosPermitidos, true)) {
+            throw new \InvalidArgumentException('El método de pago no es válido.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $factura = $this->db->fetchOne(
+                'SELECT id_ingreso_factura, fecha_vencimiento FROM vb_ingresos_factura WHERE id_ingreso_factura = :id FOR UPDATE',
+                ['id' => $idFactura]
+            );
+            if ($factura === null) {
+                throw new \RuntimeException('La factura de compra no existe.');
+            }
+
+            $totalRow = $this->db->fetchOne(
+                "SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(NULLIF(d.valor_compra, 0), p.valor_compra)), 0) AS total
+                 FROM vb_ingresos_detalle_factura d
+                 JOIN vb_productos p ON p.id_producto = d.id_producto
+                 WHERE d.id_ingreso_factura = :id",
+                ['id' => $idFactura]
+            );
+            $pagosRow = $this->db->fetchOne(
+                'SELECT COALESCE(SUM(monto), 0) AS total FROM vb_ingresos_factura_pagos WHERE id_ingreso_factura = :id',
+                ['id' => $idFactura]
+            );
+            $total = round(max(0, (float)($totalRow['total'] ?? 0)), 2);
+            $pagado = round(max(0, (float)($pagosRow['total'] ?? 0)), 2);
+            $saldo = round(max(0, $total - $pagado), 2);
+            if ($total <= 0.01) {
+                throw new \RuntimeException('Agrega productos con valor antes de registrar pagos.');
+            }
+            if ($saldo <= 0.01) {
+                throw new \RuntimeException('La factura ya está pagada.');
+            }
+            if ($monto > $saldo + 0.009) {
+                throw new \RuntimeException('El pago no puede superar el saldo pendiente de $' . number_format($saldo, 0, ',', '.') . '.');
+            }
+
+            $idTurno = null;
+            if ($metodo === 'EFECTIVO') {
+                $idTurno = (new TurnoCaja())->bloquearTurnoAbierto($idUsuario);
+                if ($idTurno === null) {
+                    throw new \RuntimeException('Debes abrir un turno de caja para registrar un pago en efectivo.');
+                }
+            }
+
+            $idPago = $this->db->insert(
+                "INSERT INTO vb_ingresos_factura_pagos
+                    (id_ingreso_factura, metodo, monto, referencia, fecha_pago, id_usuario, id_turno)
+                 VALUES (:factura, :metodo, :monto, :referencia, CURDATE(), :usuario, :turno)",
+                [
+                    'factura' => $idFactura,
+                    'metodo' => $metodo,
+                    'monto' => $monto,
+                    'referencia' => $referencia !== null && trim($referencia) !== ''
+                        ? mb_substr(trim($referencia), 0, 100)
+                        : null,
+                    'usuario' => $idUsuario,
+                    'turno' => $idTurno,
+                ]
+            );
+            $this->db->commit();
+
+            $nuevoPagado = round($pagado + $monto, 2);
+            $nuevoSaldo = round(max(0, $total - $nuevoPagado), 2);
+            $fechaVencimiento = $factura['fecha_vencimiento'] ?? null;
+            return [
+                'id_pago' => $idPago,
+                'total_factura' => $total,
+                'total_pagado' => $nuevoPagado,
+                'saldo_pendiente' => $nuevoSaldo,
+                'estado_pago' => $nuevoSaldo <= 0.01
+                    ? 'PAGADA'
+                    : ($fechaVencimiento !== null && $fechaVencimiento < date('Y-m-d') ? 'EN MORA' : 'PENDIENTE'),
+            ];
+        } catch (\Throwable $e) {
+            if ($this->db->getConnection()->inTransaction()) {
+                $this->db->rollback();
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -689,6 +900,14 @@ class Ingreso
         $factura = $this->obtenerFactura($id);
         if (!$factura) {
             throw new \RuntimeException('La factura no existe');
+        }
+
+        $pagos = $this->db->fetchOne(
+            'SELECT COUNT(*) AS total FROM vb_ingresos_factura_pagos WHERE id_ingreso_factura = :id',
+            ['id' => $id]
+        );
+        if ((int)($pagos['total'] ?? 0) > 0) {
+            throw new \RuntimeException('No se puede eliminar una factura con pagos registrados.');
         }
 
         if ((int)$factura['estado'] === 1) {
@@ -718,6 +937,7 @@ class Ingreso
      * precio_compra  = lo que se paga en ESTA factura (lo que digita el usuario)
      * costo_promedio = el costo que el producto tiene hoy en el sistema
      */
+    /** @return list<array<string, mixed>> */
     public function listarDetalleFactura(int $idFactura): array
     {
         return $this->db->select(
@@ -816,6 +1036,7 @@ class Ingreso
      * genera un ingreso por cada producto (tipo FACTURA_COMPRA) y marca la factura como aplicada.
      * Los triggers de vb_ingresos actualizan vb_inventario y vb_movimientos_inventario.
      */
+    /** @return array<string, mixed> */
     public function pasarFacturaAInventario(int $idFactura, int $idUsuario): array
     {
         $factura = $this->obtenerFactura($idFactura);
@@ -924,6 +1145,7 @@ class Ingreso
     /**
      * Revertir una factura aplicada: elimina los ingresos generados y devuelve el stock
      */
+    /** @return array<string, mixed> */
     public function revertirFactura(int $idFactura, int $idUsuario): array
     {
         $factura = $this->obtenerFactura($idFactura);
@@ -1013,6 +1235,7 @@ class Ingreso
     /**
      * Obtener un ingreso con datos del producto
      */
+    /** @return array<string, mixed>|null */
     public function obtener(int $id): ?array
     {
         return $this->db->fetchOne(
@@ -1032,6 +1255,8 @@ class Ingreso
     /**
      * Ingresos en un rango de fechas con totales de inversión, venta y ganancia
      */
+    /** @return list<array<string, mixed>> */
+    /** @return array{data: list<array<string, mixed>>, desde: string, hasta: string, totales: array<string, mixed>} */
     public function porFecha(string $desde, string $hasta, string $tipo = 'TODOS'): array
     {
         $params = ['desde' => $desde, 'hasta' => $hasta];
@@ -1098,6 +1323,7 @@ class Ingreso
     /**
      * Eliminar un ingreso revirtiendo el stock (solo ingresos manuales)
      */
+    /** @return array<string, mixed>|null */
     public function eliminar(int $id, int $idUsuario): ?array
     {
         $ing = $this->obtener($id);

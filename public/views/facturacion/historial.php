@@ -60,6 +60,14 @@
             </div>
         </div>
         <div class="row g-2 mt-2">
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="filtroEstadoPago">
+                    <option value="">Todos los estados de pago</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="PAGADA">Pagada</option>
+                    <option value="EN MORA">En mora</option>
+                </select>
+            </div>
             <div class="col-md-4">
                 <input type="text" class="form-control form-control-sm" id="filtroSearch" placeholder="Buscar por código, cliente o documento...">
             </div>
@@ -100,11 +108,11 @@
                 <thead class="table-light">
                     <tr>
                         <th>#</th><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Tipo</th><th>Pago</th>
-                        <th>Total</th><th>Estado</th><th>CUFE</th><th style="width:90px">Acciones</th>
+                        <th>Estado de pago</th><th>Vencimiento</th><th>Total</th><th>Estado</th><th>CUFE</th><th style="width:90px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyFacturas">
-                    <tr><td colspan="10" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
+                    <tr><td colspan="12" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -169,6 +177,7 @@ function getFiltros() {
         tipo: $('#filtroTipo').val(),
         tipo_pago: $('#filtroPago').val(),
         estado: $('#filtroEstado').val(),
+        estado_pago: $('#filtroEstadoPago').val(),
         fecha_ini: $('#filtroFechaIni').val(),
         fecha_fin: $('#filtroFechaFin').val(),
         codigo: $('#filtroCodigo').val(),
@@ -178,7 +187,7 @@ function getFiltros() {
 function cargarFacturas() {
     pf = 1;
     var f = getFiltros();
-    $('#tbodyFacturas').html('<tr><td colspan="10" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
+    $('#tbodyFacturas').html('<tr><td colspan="12" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
 
     $.getJSON('<?= $basePath ?>/facturacion/listar', f, function(r) {
         if (!r.success) return;
@@ -186,7 +195,7 @@ function cargarFacturas() {
         var total = 0, cantFE = 0, totalEf = 0, ganancia = 0, anuladas = 0;
 
         if (!d.data.length) {
-            html = '<tr><td colspan="10" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas</td></tr>';
+            html = '<tr><td colspan="12" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas</td></tr>';
         } else {
             $.each(d.data, function(i, fac) {
                 total += parseFloat(fac.total) || 0;
@@ -212,6 +221,10 @@ function cargarFacturas() {
                     estLabel = 'ANULADA';
                 }
                 var cufe = fac.cufe ? '<small title="' + escHtml(fac.cufe) + '">' + fac.cufe.substring(0, 10) + '...</small>' : '-';
+                var estadoPago = fac.estado_pago || 'PENDIENTE';
+                var estadoPagoClase = estadoPago === 'PAGADA' ? 'bg-success'
+                    : (estadoPago === 'EN MORA' ? 'bg-danger'
+                        : (estadoPago === 'ANULADA' ? 'bg-secondary' : 'bg-warning text-dark'));
 
                 html += '<tr class="' + (fac.estado === 'ANULADA' || tieneDev ? 'text-muted' : '') + '">' +
                     '<td class="fw-bold">' + (fac.codigo||'') + '</td>' +
@@ -222,6 +235,8 @@ function cargarFacturas() {
                         '</small></td>' +
                     '<td><span class="badge ' + tipoBadge + '" style="font-size:10px">' + fac.tipo + '</span></td>' +
                     '<td><small>' + fac.tipo_pago + '</small></td>' +
+                    '<td><span class="badge ' + estadoPagoClase + '" style="font-size:10px">' + estadoPago + '</span></td>' +
+                    '<td><small>' + (fac.fecha_vencimiento || '-') + '</small></td>' +
                     '<td class="fw-bold">$' + formatoNumero(fac.total) + '</td>' +
                     '<td><span class="badge ' + estBadge + '" style="font-size:10px">' + estLabel + '</span></td>' +
                     '<td>' + cufe + '</td>' +
@@ -251,6 +266,7 @@ function cargarFacturas() {
 
 function limpiarFiltros() {
     $('#filtroTipo').val(''); $('#filtroPago').val(''); $('#filtroEstado').val('');
+    $('#filtroEstadoPago').val('');
     $('#filtroFechaIni').val('<?= date('Y-m-01') ?>'); $('#filtroFechaFin').val('<?= date('Y-m-d') ?>');
     $('#filtroSearch').val(''); $('#filtroCodigo').val('');
     cargarFacturas();
@@ -265,7 +281,11 @@ function verDetalle(id) {
         var f = r.data;
         var detHtml = '';
         $.each(f.detalles, function(i, d) {
-            detHtml += '<tr><td>' + (i+1) + '</td><td>' + escHtml(d.descripcion || '') + '</td><td>' + (d.cantidad_unidad||0) + '</td><td>' + (d.cantidad_fraccion||0) + '</td><td>$' + formatoNumero(d.precio_unitario) + '</td><td>' + (d.iva||0) + '%</td><td class="fw-bold">$' + formatoNumero(d.total) + '</td></tr>';
+            var esDecimalDet = parseFloat(d.cantidad_decimal || 0) > 0 && !(parseFloat(d.cantidad_unidad || 0) > 0);
+            var cantDet = esDecimalDet
+                ? parseFloat(d.cantidad_decimal).toFixed(2) + ' <small class="text-muted">dec.</small>'
+                : (d.cantidad_unidad||0) + (parseFloat(d.cantidad_fraccion||0) > 0 ? ' + ' + d.cantidad_fraccion + ' <small class="text-muted">und</small>' : '');
+            detHtml += '<tr><td>' + (i+1) + '</td><td>' + escHtml(d.descripcion || '') + '</td><td>' + cantDet + '</td><td>' + (esDecimalDet ? '—' : (d.cantidad_fraccion||0)) + '</td><td>$' + formatoNumero(d.precio_unitario) + (parseFloat(d.valor_unidad||0) > 0 && parseFloat(d.cantidad_fraccion||0) > 0 ? '<br><small class="text-muted">Und: $' + formatoNumero(d.valor_unidad) + '</small>' : '') + '</td><td>' + (d.iva||0) + '%</td><td class="fw-bold">$' + formatoNumero(d.total) + '</td></tr>';
         });
 
         $('#detalleBody').html(
@@ -499,7 +519,8 @@ function procesarDevolucion() {
                     id_producto: idProd,
                     cantidad_unidad: cantU,
                     cantidad_fraccion: cantF,
-                    valor_unitario: parseFloat($(this).data('valor')) || 0
+                    valor_unitario: parseFloat($(this).data('valor')) || 0,
+                    valor_unidad: parseFloat($('.cant-dev-frac[data-idprod="' + idProd + '"]').data('valor')) || 0
                 });
                 productosProcesados[idProd] = true;
             }

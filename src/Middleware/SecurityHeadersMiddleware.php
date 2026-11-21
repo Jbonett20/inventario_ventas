@@ -13,6 +13,8 @@ class SecurityHeadersMiddleware
 {
     /**
      * Headers de seguridad a aplicar
+     *
+     * @var array<string, string>
      */
     private array $headers = [
         'X-Content-Type-Options'  => 'nosniff',

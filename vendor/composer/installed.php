@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'sistema/inventario-ventas',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => null,
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => '27ee45acf9f57d8361f6d6e7dfbbc338a6c5c7bf',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -92,9 +92,9 @@
             'dev_requirement' => true,
         ),
         'psalm/phar' => array(
-            'pretty_version' => '5.26.1',
-            'version' => '5.26.1.0',
-            'reference' => '8a38e7ad04499a0ccd2c506fd1da6fc01fff4547',
+            'pretty_version' => '6.20.12',
+            'version' => '6.20.12.0',
+            'reference' => '3a3a7b4c599fddd57b53670e16d0ae5494f2d082',
             'type' => 'library',
             'install_path' => __DIR__ . '/../psalm/phar',
             'aliases' => array(),
@@ -134,9 +134,9 @@
             'dev_requirement' => false,
         ),
         'sistema/inventario-ventas' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => null,
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '27ee45acf9f57d8361f6d6e7dfbbc338a6c5c7bf',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

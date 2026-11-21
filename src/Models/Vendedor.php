@@ -21,6 +21,8 @@ class Vendedor
 
     /**
      * Listar vendedores con su total vendido (histórico)
+     *
+     * @return list<array<string, mixed>>
      */
     public function listar(bool $soloActivos = false, string $buscar = ''): array
     {
@@ -55,6 +57,8 @@ class Vendedor
 
     /**
      * Buscar vendedores por código, cédula o nombre (para el POS)
+     *
+     * @return list<array<string, mixed>>
      */
     public function buscar(string $q, int $limite = 20): array
     {
@@ -78,6 +82,8 @@ class Vendedor
 
     /**
      * Obtener un vendedor por id
+     *
+     * @return array<string, mixed>|null
      */
     public function obtener(int $id): ?array
     {
@@ -115,6 +121,8 @@ class Vendedor
 
     /**
      * Crear o actualizar un vendedor
+     *
+     * @param array<string, mixed> $data
      */
     public function guardar(array $data): int
     {
@@ -198,6 +206,8 @@ class Vendedor
      * Eliminar un vendedor.
      * Si tiene ventas asignadas, la FK es ON DELETE SET NULL, así que se
      * recomienda desactivarlo en su lugar para no perder el histórico.
+     *
+     * @return array{nombre: mixed, codigo: mixed}
      */
     public function eliminar(int $id): array
     {
@@ -232,6 +242,7 @@ class Vendedor
      *   USUARIO    -> usuarios del sistema que vendieron sin vendedor asignado
      *
      * @param bool $soloConVentas Omitir los que no vendieron nada en el rango
+     * @return list<array<string, mixed>>
      */
     public function ventasPorVendedor(string $desde, string $hasta, bool $soloConVentas = true): array
     {
@@ -294,6 +305,7 @@ class Vendedor
      * Detalle de las facturas de un vendedor en un rango de fechas
      *
      * @param string $tipo REGISTRADO | USUARIO
+     * @return list<array<string, mixed>>
      */
     public function detalleVentas(string $desde, string $hasta, string $tipo, int $id): array
     {

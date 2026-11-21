@@ -547,7 +547,7 @@ CREATE TABLE `vb_productos` (
   `id_categoria` int(10) UNSIGNED DEFAULT NULL,
   `id_iva` int(10) UNSIGNED DEFAULT NULL,
   `id_seccion` int(10) UNSIGNED DEFAULT NULL,
-  `unidad_cerrada` int(11) NOT NULL DEFAULT 1 COMMENT 'Unidades por caja/empaque',
+  `unidad_cerrada` int(11) NOT NULL DEFAULT 1 COMMENT 'Unidades internas vendibles por caja/empaque cerrado',
   `fraccion` int(11) NOT NULL DEFAULT 0 COMMENT '0=no fraccionable, >0=cantidad por unidad',
   `valor_compra` decimal(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Precio de compra',
   `valor_venta` decimal(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Precio de venta p??blico',
@@ -557,7 +557,10 @@ CREATE TABLE `vb_productos` (
   `imagen` varchar(255) DEFAULT NULL COMMENT 'Ruta de imagen del producto',
   `activo` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `tipo_venta` enum('UNIDAD','CAJA','FRACCION_DECIMAL') NOT NULL DEFAULT 'UNIDAD' COMMENT 'Tipo de venta del producto',
+  `unidad_medida` varchar(30) DEFAULT NULL COMMENT 'Unidad de medida para venta decimal',
+  `cantidad_por_unidad` decimal(12,4) NOT NULL DEFAULT 1.0000 COMMENT 'Cantidad de medida equivalente a una unidad de venta'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

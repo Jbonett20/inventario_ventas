@@ -3,6 +3,7 @@ namespace SIG\Models;
 
 use SIG\Core\Database;
 use SIG\Core\Session;
+use DateTimeImmutable;
 
 class Factura
 {
@@ -50,13 +51,14 @@ class Factura
      * Si no llega el arreglo, se arma un solo pago con la forma de pago de siempre.
      *
      * Reglas:
-     *   - La suma de los pagos debe cubrir el total de la factura.
+     *   - La suma debe cubrir el total, salvo que se financie el saldo.
      *   - El cambio sale del efectivo recibido, para que los pagos guardados
      *     sumen exactamente el total y los reportes por método cuadren.
      *
-     * @return array ['pagos' => array, 'recibido' => float, 'cambio' => float, 'resumen' => string]
+     * @param array<string, mixed> $data
+     * @return array{pagos: list<array{metodo: string, monto: float, referencia: string|null}>, recibido: float, cambio: float, resumen: string, saldo_credito: float}
      */
-    private function procesarPagos(array $data, float $totalPagar): array
+    private function procesarPagos(array $data, float $totalPagar, bool $permitirCredito = false): array
     {
         $pagos = [];
         $brutos = $data['pagos'] ?? null;
@@ -81,7 +83,7 @@ class Factura
         }
 
         // Compatibilidad: sin arreglo, se usa la forma de pago única
-        if (!$pagos) {
+        if (!$pagos && !$permitirCredito) {
             $metodo = strtoupper(trim((string)($data['tipo_pago'] ?? ''))) ?: 'EFECTIVO';
             $monto  = round((float)($data['pago_recibido'] ?? 0), 2);
             if ($monto <= 0) {
@@ -96,9 +98,10 @@ class Factura
         }
 
         $recibido = round(array_sum(array_column($pagos, 'monto')), 2);
+        $saldoCredito = round(max(0, $totalPagar - min($recibido, $totalPagar)), 2);
 
         // El cliente tiene que cubrir el total
-        if ($totalPagar > 0 && $recibido + 0.01 < $totalPagar) {
+        if (!$permitirCredito && $totalPagar > 0 && $recibido + 0.01 < $totalPagar) {
             throw new \RuntimeException(
                 'Los pagos suman $' . number_format($recibido, 0, ',', '.') .
                 ' y la factura es de $' . number_format($totalPagar, 0, ',', '.') .
@@ -128,24 +131,47 @@ class Factura
         }
 
         $metodos = array_values(array_unique(array_column($pagos, 'metodo')));
-        $resumen = count($metodos) > 1 ? 'MIXTO' : $metodos[0];
+        $resumen = count($metodos) > 1
+            ? 'MIXTO'
+            : ($metodos[0] ?? ($saldoCredito > 0 ? 'CREDITO' : 'EFECTIVO'));
 
         return [
-            'pagos'    => $pagos,
-            'recibido' => $recibido,
-            'cambio'   => $cambio,
-            'resumen'  => $resumen,
+            'pagos'          => $pagos,
+            'recibido'       => $recibido,
+            'cambio'         => $cambio,
+            'resumen'        => $resumen,
+            'saldo_credito'  => $saldoCredito,
         ];
     }
 
     /**
      * Crear factura (cabecera + detalle) en transacción
      */
+
+    /**
+     * @param array<string, mixed> $data
+     * @param list<array<string, mixed>> $detalles
+     * @return array<string, mixed>
+     */
     public function crear(array $data, array $detalles, int $idVendedor): array
     {
         $this->db->beginTransaction();
 
         try {
+            $idTurno = (new TurnoCaja())->bloquearTurnoAbierto($idVendedor);
+            if ($idTurno === null) {
+                throw new \RuntimeException('Debes abrir un turno de caja antes de registrar ventas.');
+            }
+
+            $ventaCredito = filter_var($data['venta_credito'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || strtoupper(trim((string)($data['tipo_pago'] ?? ''))) === 'CREDITO';
+            if ($ventaCredito) {
+                $this->validarClienteCredito((int)($data['id_cliente'] ?? 0));
+            }
+            $fechaVencimiento = $ventaCredito
+                ? $this->validarFechaVencimiento($data['fecha_vencimiento'] ?? null)
+                : null;
+
             $tipo = $data['tipo'] ?? 'NORMAL';
             $codigo = $this->siguienteCodigo($tipo);
 
@@ -156,22 +182,81 @@ class Factura
 
             foreach ($detalles as &$det) {
                 $producto = $this->db->fetchOne(
-                    "SELECT valor_compra, rentabilidad, tipo_venta, cantidad_por_unidad FROM vb_productos WHERE id_producto = :id",
+                    "SELECT valor_compra, rentabilidad, tipo_venta, cantidad_por_unidad, unidad_cerrada, fraccion, valor_unidad,
+                            unidades_intermedias, unidades_por_intermedio, valor_intermedio
+                     FROM vb_productos WHERE id_producto = :id",
                     ['id' => $det['id_producto']]
                 );
+                if (!$producto) {
+                    throw new \RuntimeException('El producto de la venta ya no existe.');
+                }
 
                 $tipoVenta = $producto['tipo_venta'] ?? 'UNIDAD';
                 $det['tipo_venta'] = $tipoVenta;
+                $precioInterno = (float)($producto['valor_unidad'] ?? 0) > 0
+                    ? (float)$producto['valor_unidad']
+                    : (float)$det['precio_unitario'];
+                $det['valor_unidad'] = $precioInterno;
 
                 if ($tipoVenta === 'FRACCION_DECIMAL') {
                     // Venta por fracción decimal: precio * cantidad decimal
                     $cantDec = (float)($det['cantidad_decimal'] ?? 0);
+                    if ($cantDec <= 0) {
+                        throw new \RuntimeException('La cantidad vendida debe ser mayor que cero.');
+                    }
+                    $det['cantidad_unidad'] = 0;
+                    $det['cantidad_fraccion'] = 0;
+                    $det['cantidad_intermedia'] = 0;
                     $det['subtotal'] = $det['precio_unitario'] * $cantDec;
-                    $det['ganancia'] = $producto ? ($det['precio_unitario'] - $producto['valor_compra']) * $cantDec : 0;
+                    $det['ganancia'] = ($det['precio_unitario'] - (float)$producto['valor_compra']) * $cantDec;
                 } else {
-                    $det['subtotal'] = $det['precio_unitario'] * ($det['cantidad_unidad'] + ($det['cantidad_fraccion'] / max($det['fraccion'] ?? 1, 1)));
-                    $totalVendido = $det['cantidad_unidad'] + (($det['fraccion'] ?? 0) > 0 ? 0 : ($det['cantidad_fraccion'] ?? 0));
-                    $det['ganancia'] = $producto ? ($det['precio_unitario'] - $producto['valor_compra']) * $totalVendido : 0;
+                    // Cajas a precio de caja, nivel intermedio a su precio y unidades mínimas a su precio
+                    $cantUnd = max(0, (int)($det['cantidad_unidad'] ?? 0));
+                    $cantFrac = max(0, (int)($det['cantidad_fraccion'] ?? 0));
+                    $cantInter = max(0, (int)($det['cantidad_intermedia'] ?? 0));
+                    $porCaja = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+                    $intermedios = max(0, (int)($producto['unidades_intermedias'] ?? 0));
+                    $porIntermedio = max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+                    $precioIntermedio = (float)($producto['valor_intermedio'] ?? 0);
+                    $det['cantidad_unidad'] = $cantUnd;
+                    $det['cantidad_fraccion'] = $cantFrac;
+                    $det['cantidad_intermedia'] = $cantInter;
+                    $det['cantidad_decimal'] = 0;
+
+                    if ($cantUnd + $cantFrac + $cantInter <= 0) {
+                        throw new \RuntimeException('La cantidad vendida debe ser mayor que cero.');
+                    }
+                    if ($cantFrac > 0 && (int)($producto['fraccion'] ?? 0) <= 0) {
+                        throw new \RuntimeException('El producto no se vende por unidades internas sueltas.');
+                    }
+                    if ($cantInter > 0 && ($intermedios <= 0 || $precioIntermedio <= 0)) {
+                        throw new \RuntimeException('El producto no tiene configurado el nivel intermedio de venta.');
+                    }
+
+                    // Costo de cada presentación: la caja y el nivel intermedio agrupan unidades mínimas
+                    $costoCaja = (float)$producto['valor_compra'] * $porCaja;
+                    $costoIntermedio = (float)$producto['valor_compra'] * $porIntermedio;
+
+                    $det['subtotal'] = ($cantUnd * (float)$det['precio_unitario'])
+                        + ($cantInter * $precioIntermedio)
+                        + ($cantFrac * $precioInterno);
+                    $det['ganancia'] = ($cantUnd * ((float)$det['precio_unitario'] - $costoCaja))
+                        + ($cantInter * ($precioIntermedio - $costoIntermedio))
+                        + ($cantFrac * ($precioInterno - (float)$producto['valor_compra']));
+                }
+
+                // Unidades mínimas que realmente salen del inventario. Vender un
+                // sobre de una caja cerrada abre la caja y consume de sus unidades.
+                if ($tipoVenta === 'FRACCION_DECIMAL') {
+                    $det['unidades_inventario'] = (float)($det['cantidad_decimal'] ?? 0);
+                } else {
+                    // Todo el inventario se lleva en la unidad mínima:
+                    // cajas × unidades por caja + nivel intermedio × unidades por nivel + sueltas.
+                    $porCajaInv = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+                    $porIntermedioInv = max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+                    $det['unidades_inventario'] = (max(0, (int)($det['cantidad_unidad'] ?? 0)) * $porCajaInv)
+                        + (max(0, (int)($det['cantidad_intermedia'] ?? 0)) * $porIntermedioInv)
+                        + max(0, (int)($det['cantidad_fraccion'] ?? 0));
                 }
                 $det['iva_valor'] = $det['subtotal'] * ($det['iva'] / 100);
                 $det['total'] = $det['subtotal'] + $det['iva_valor'];
@@ -187,20 +272,21 @@ class Factura
             $totalPagar = $total - $descuento;
 
             // Pagos fraccionados: el cliente puede pagar con varias formas
-            $infoPagos    = $this->procesarPagos($data, $totalPagar);
+            $infoPagos    = $this->procesarPagos($data, $totalPagar, $ventaCredito);
             $pagos        = $infoPagos['pagos'];
             $pagoRecibido = $infoPagos['recibido'];
             $cambio       = $infoPagos['cambio'];
-            $tipoPago     = $infoPagos['resumen'];
+            $saldoCredito = $infoPagos['saldo_credito'];
+            $tipoPago     = $saldoCredito > 0 ? 'CREDITO' : $infoPagos['resumen'];
 
             // Insertar factura
             $idFactura = $this->db->insert(
                 "INSERT INTO vb_facturas 
                     (uuid, codigo, id_empresa, id_cliente, id_vendedor, id_vendedor_registrado,
-                     fecha, hora, tipo, tipo_pago,
+                     id_turno, fecha, hora, tipo, tipo_pago,
                      subtotal, total_iva, total, pago_recibido, cambio, descuento, ganancia, estado)
                  VALUES 
-                    (:uuid, :cod, 1, :cli, :vend, :vendreg,
+                    (:uuid, :cod, 1, :cli, :vend, :vendreg, :turno,
                      :fecha, :hora, :tipo, :tpago,
                      :sub, :iva, :total, :pago, :cambio, :desc, :gan, 'ACTIVA')",
                 [
@@ -209,6 +295,7 @@ class Factura
                     'cli'   => $data['id_cliente'] ?? 1,
                     'vend'  => $idVendedor,
                     'vendreg' => !empty($data['id_vendedor_registrado']) ? (int)$data['id_vendedor_registrado'] : null,
+                    'turno' => $idTurno,
                     'fecha' => date('Y-m-d'),
                     'hora'  => date('H:i:s'),
                     'tipo'  => $tipo,
@@ -228,21 +315,24 @@ class Factura
                 $this->db->insert(
                     "INSERT INTO vb_detalle_facturas
                         (id_factura, id_producto, descripcion, cantidad_unidad, cantidad_fraccion,
-                         precio_unitario, iva, iva_valor, subtotal, total, cantidad_decimal)
+                         cantidad_intermedia, precio_unitario, iva, iva_valor, subtotal, total, cantidad_decimal,
+                         unidades_inventario)
                      VALUES
-                        (:fac, :prod, :desc, :cu, :cf, :pu, :iva, :ivav, :sub, :tot, :cd)",
+                        (:fac, :prod, :desc, :cu, :cf, :ci, :pu, :iva, :ivav, :sub, :tot, :cd, :ui)",
                     [
                         'fac'  => $idFactura,
                         'prod' => $det['id_producto'],
                         'desc' => $det['descripcion'] ?? '',
                         'cu'   => $det['cantidad_unidad'],
                         'cf'   => $det['cantidad_fraccion'] ?? 0,
+                        'ci'   => (int)($det['cantidad_intermedia'] ?? 0),
                         'pu'   => $det['precio_unitario'],
                         'iva'  => $det['iva'],
                         'ivav' => $det['iva_valor'],
                         'sub'  => $det['subtotal'],
                         'tot'  => $det['total'],
                         'cd'   => (float)($det['cantidad_decimal'] ?? 0),
+                        'ui'   => (float)($det['unidades_inventario'] ?? 0),
                     ]
                 );
 
@@ -255,13 +345,10 @@ class Factura
                 if ($inv) {
                     // Obtener configuración de fracción del producto
                     $prodInv = $this->db->fetchOne(
-                        "SELECT fraccion, tipo_venta, cantidad_por_unidad FROM vb_productos WHERE id_producto = :id",
+                        "SELECT tipo_venta FROM vb_productos WHERE id_producto = :id",
                         ['id' => $det['id_producto']]
                     );
                     $tipoVentaInv = $prodInv['tipo_venta'] ?? 'UNIDAD';
-                    $fracPorUnd = (int)($prodInv['fraccion'] ?? 0);
-                    $cantUnd = (int)$det['cantidad_unidad'];
-                    $cantFrac = (int)($det['cantidad_fraccion'] ?? 0);
                     $cantDec = (float)($det['cantidad_decimal'] ?? 0);
 
                     if ($tipoVentaInv === 'FRACCION_DECIMAL') {
@@ -280,30 +367,19 @@ class Factura
                         $nuevaFrac = max(0, $nuevaFrac);
                         $movUnd = 0;
                         $movFrac = -$cantDec;
-                    } elseif ($fracPorUnd === 0) {
-                        // Producto NO fraccionable: sumar todo como unidades completas
-                        $totalUnd = $cantUnd + $cantFrac;
-                        $nuevaUnd = max(0, (int)$inv['unidad'] - $totalUnd);
-                        $nuevaFrac = 0;
-                        $movUnd = -$totalUnd;
-                        $movFrac = 0;
                     } else {
-                        // Producto fraccionable (unidades sueltas enteras): descontar normalmente
-                        $nuevaUnd = (int)$inv['unidad'] - $cantUnd;
-                        $nuevaFrac = (int)$inv['fraccion'] - $cantFrac;
-
-                        // Si fracción queda negativa, convertir una unidad en fracciones
-                        if ($nuevaFrac < 0 && $fracPorUnd > 0) {
-                            $unidadesADescontar = ceil(abs($nuevaFrac) / $fracPorUnd);
-                            $nuevaUnd -= $unidadesADescontar;
-                            $nuevaFrac = $fracPorUnd - (abs($nuevaFrac) % $fracPorUnd);
-                            if ($nuevaFrac >= $fracPorUnd) $nuevaFrac = 0;
+                        // Todo el inventario se lleva en la unidad mínima
+                        $totalInternas = (int)($det['unidades_inventario'] ?? 0);
+                        if ($totalInternas > (int)$inv['unidad']) {
+                            throw new \RuntimeException(
+                                'Stock insuficiente: se requieren ' . $totalInternas
+                                . ' unidades mínimas y hay ' . (int)$inv['unidad'] . '.'
+                            );
                         }
-
-                        $nuevaUnd = max(0, $nuevaUnd);
-                        $nuevaFrac = max(0, $nuevaFrac);
-                        $movUnd = -$cantUnd;
-                        $movFrac = -$cantFrac;
+                        $nuevaUnd = (int)$inv['unidad'] - $totalInternas;
+                        $nuevaFrac = 0;
+                        $movUnd = -$totalInternas;
+                        $movFrac = 0;
                     }
 
                     $this->db->executeAffected(
@@ -331,15 +407,36 @@ class Factura
             // Detalle de los pagos: uno por cada forma con que pagó el cliente
             foreach ($pagos as $p) {
                 $this->db->insert(
-                    "INSERT INTO vb_facturas_pagos (id_factura, metodo, monto, referencia, id_usuario, created_at)
-                     VALUES (:fac, :metodo, :monto, :ref, :uid, NOW())",
+                    "INSERT INTO vb_facturas_pagos (id_factura, metodo, monto, referencia, id_usuario, id_turno, created_at)
+                     VALUES (:fac, :metodo, :monto, :ref, :uid, :turno, NOW())",
                     [
                         'fac'    => $idFactura,
                         'metodo' => $p['metodo'],
                         'monto'  => $p['monto'],
                         'ref'    => $p['referencia'],
                         'uid'    => $idVendedor,
+                        'turno'  => $idTurno,
                     ]
+                );
+            }
+
+            $idCredito = null;
+            if ($saldoCredito > 0) {
+                $idCredito = $this->db->insert(
+                    "INSERT INTO vb_creditos
+                        (codigo, id_cliente, valor_total, valor_aumento, saldo_pendiente, fecha_inicio, fecha_fin, estado)
+                     VALUES (:codigo, :id_cliente, :valor_total, 0, :saldo, CURDATE(), :fecha_fin, 'ACTIVO')",
+                    [
+                        'codigo'      => 'CRE-POS-' . $idFactura,
+                        'id_cliente'  => (int)$data['id_cliente'],
+                        'valor_total' => $saldoCredito,
+                        'saldo'       => $saldoCredito,
+                        'fecha_fin'   => $fechaVencimiento,
+                    ]
+                );
+                $this->db->executeAffected(
+                    'UPDATE vb_facturas SET id_credito = :credito WHERE id_factura = :factura',
+                    ['credito' => $idCredito, 'factura' => $idFactura]
                 );
             }
 
@@ -353,6 +450,8 @@ class Factura
                 'cambio'     => $cambio,
                 'tipo_pago'  => $tipoPago,
                 'pagos'      => $pagos,
+                'id_credito' => $idCredito,
+                'saldo_credito' => $saldoCredito,
             ];
 
         } catch (\Exception $e) {
@@ -361,17 +460,95 @@ class Factura
         }
     }
 
+    private function validarClienteCredito(int $idCliente): void
+    {
+        if ($idCliente <= 0) {
+            throw new \RuntimeException('Selecciona un cliente activo para registrar una venta a crédito.');
+        }
+
+        $cliente = $this->db->fetchOne(
+            'SELECT id_cliente, nombre, activo FROM vb_clientes WHERE id_cliente = :id FOR UPDATE',
+            ['id' => $idCliente]
+        );
+        if ($cliente === null) {
+            throw new \RuntimeException('El cliente seleccionado no existe.');
+        }
+        if ((int)$cliente['id_cliente'] === 1 || mb_strtoupper(trim((string)$cliente['nombre']), 'UTF-8') === 'CLIENTE GENERAL') {
+            throw new \RuntimeException('Las ventas a crédito requieren un cliente distinto de CLIENTE GENERAL.');
+        }
+        if ((int)$cliente['activo'] !== 1) {
+            throw new \RuntimeException('El cliente seleccionado está inactivo.');
+        }
+    }
+
+    private function validarFechaVencimiento(mixed $fecha): ?string
+    {
+        if ($fecha === null || trim((string)$fecha) === '') {
+            return null;
+        }
+
+        $fecha = trim((string)$fecha);
+        $fechaValida = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
+        if (!$fechaValida || $fechaValida->format('Y-m-d') !== $fecha) {
+            throw new \RuntimeException('La fecha de vencimiento no es válida.');
+        }
+
+        return $fecha;
+    }
+
+    /** @param array<string, mixed> $factura
+     *  @return array<string, mixed>
+     */
+    private function agregarEstadoPago(array $factura): array
+    {
+        $total = max(0, (float)($factura['total'] ?? 0));
+        $estadoOperativo = strtoupper((string)($factura['estado'] ?? ''));
+        if ($estadoOperativo === 'ANULADA') {
+            $factura['total_pagado'] = 0.0;
+            $factura['saldo_pendiente'] = 0.0;
+            $factura['estado_pago'] = 'ANULADA';
+            $factura['fecha_vencimiento'] = $factura['fecha_vencimiento'] ?? null;
+            return $factura;
+        }
+
+        if (!empty($factura['id_credito'])) {
+            $saldo = round(max(0, (float)($factura['saldo_credito'] ?? 0)), 2);
+            $pagado = round(max(0, $total - min($total, $saldo)), 2);
+        } else {
+            $pagos = $factura['total_pagos_registrados'] ?? null;
+            $recibido = $pagos !== null
+                ? (float)$pagos
+                : (float)($factura['pago_recibido'] ?? 0);
+            $pagado = round(min($total, max(0, $recibido)), 2);
+            $saldo = round(max(0, $total - $pagado), 2);
+        }
+
+        $fechaVencimiento = $factura['fecha_vencimiento'] ?? null;
+        $factura['total_pagado'] = $pagado;
+        $factura['saldo_pendiente'] = $saldo;
+        $factura['estado_pago'] = $saldo <= 0.01
+            ? 'PAGADA'
+            : ($fechaVencimiento !== null && $fechaVencimiento < date('Y-m-d') ? 'EN MORA' : 'PENDIENTE');
+
+        return $factura;
+    }
+
     /**
      * Obtener factura con detalles (incluye cantidades restantes para devolución)
      */
+    /** @return array<string, mixed>|null */
     public function obtenerConDetalle(int $id): ?array
     {
         $factura = $this->db->fetchOne(
             "SELECT f.*, c.nombre AS cliente_nombre, c.documento AS cliente_documento,
                     c.direccion AS cliente_direccion, u.nombre_usuario AS vendedor_nombre,
-                    e.nombre AS empresa_nombre, e.nit AS empresa_nit
+                    e.nombre AS empresa_nombre, e.nit AS empresa_nit,
+                    cr.fecha_fin AS fecha_vencimiento, cr.saldo_pendiente AS saldo_credito,
+                    (SELECT SUM(pg.monto) FROM vb_facturas_pagos pg WHERE pg.id_factura = f.id_factura)
+                        AS total_pagos_registrados
              FROM vb_facturas f
              LEFT JOIN vb_clientes c ON f.id_cliente = c.id_cliente
+             LEFT JOIN vb_creditos cr ON cr.id_credito = f.id_credito
              LEFT JOIN vb_usuarios u ON f.id_vendedor = u.id_usuario
              LEFT JOIN vb_empresa e ON f.id_empresa = e.id_empresa
              WHERE f.id_factura = :id",
@@ -379,14 +556,21 @@ class Factura
         );
 
         if (!$factura) return null;
+        $factura = $this->agregarEstadoPago($factura);
 
         $detalles = $this->db->select(
             "SELECT d.*, p.codigo, p.presentacion, p.fraccion, p.valor_unidad,
+                    p.unidades_intermedias, p.unidades_por_intermedio, p.nombre_intermedio, p.valor_intermedio,
                     GREATEST(0, d.cantidad_unidad - IFNULL(
                         (SELECT SUM(dd.cantidad_unidad) FROM vb_devoluciones_detalle dd
                          JOIN vb_devoluciones dev ON dd.id_devolucion = dev.id_devolucion
                          WHERE dev.id_factura = d.id_factura AND dd.id_producto = d.id_producto), 0
                     )) AS restante_unidad,
+                    GREATEST(0, d.cantidad_intermedia - IFNULL(
+                        (SELECT SUM(dd.cantidad_intermedia) FROM vb_devoluciones_detalle dd
+                         JOIN vb_devoluciones dev ON dd.id_devolucion = dev.id_devolucion
+                         WHERE dev.id_factura = d.id_factura AND dd.id_producto = d.id_producto), 0
+                    )) AS restante_intermedia,
                     GREATEST(0, d.cantidad_fraccion - IFNULL(
                         (SELECT SUM(dd.cantidad_fraccion) FROM vb_devoluciones_detalle dd
                          JOIN vb_devoluciones dev ON dd.id_devolucion = dev.id_devolucion
@@ -417,6 +601,10 @@ class Factura
     /**
      * Listar facturas con filtros avanzados
      */
+    /**
+     * @param array<string, mixed> $filtros
+     * @return array{data: list<array<string, mixed>>, total: int, page: int, perPage: int, totalPages: float}
+     */
     public function listar(array $filtros = []): array
     {
         $page    = (int)($filtros['page'] ?? 1);
@@ -425,6 +613,10 @@ class Factura
 
         $where  = 'WHERE 1=1';
         $params = [];
+        $saldoPendienteSql = "CASE
+            WHEN f.id_credito IS NOT NULL THEN GREATEST(COALESCE(cr.saldo_pendiente, 0), 0)
+            ELSE GREATEST(f.total - COALESCE(pagos.total_pagado, f.pago_recibido, 0), 0)
+        END";
 
         // Búsqueda general
         if (!empty($filtros['search'])) {
@@ -450,6 +642,23 @@ class Factura
         if (!empty($filtros['estado'])) {
             $where .= " AND f.estado = :est";
             $params['est'] = $filtros['estado'];
+        }
+
+        $estadoPago = strtoupper(trim((string)($filtros['estado_pago'] ?? '')));
+        if ($estadoPago !== '') {
+            if (!in_array($estadoPago, ['PENDIENTE', 'PAGADA', 'EN MORA'], true)) {
+                throw new \InvalidArgumentException('El estado de pago seleccionado no es válido.');
+            }
+
+            $where .= " AND f.estado IN ('ACTIVA', 'ACTIVO')";
+            if ($estadoPago === 'PAGADA') {
+                $where .= " AND {$saldoPendienteSql} <= 0.01";
+            } elseif ($estadoPago === 'EN MORA') {
+                $where .= " AND {$saldoPendienteSql} > 0.01 AND cr.fecha_fin < CURDATE()";
+            } else {
+                $where .= " AND {$saldoPendienteSql} > 0.01
+                            AND (cr.fecha_fin IS NULL OR cr.fecha_fin >= CURDATE())";
+            }
         }
 
         // Por rango de fechas
@@ -479,9 +688,17 @@ class Factura
                     COALESCE(v.nombre, NULLIF(u.nombre_completo, ''), u.nombre_usuario) AS vendedor_nombre,
                     v.codigo AS vendedor_codigo,
                     (v.id_vendedor IS NOT NULL) AS vendedor_es_registrado,
-                    (SELECT COUNT(*) FROM vb_devoluciones dv WHERE dv.id_factura = f.id_factura) AS tiene_devoluciones
+                    (SELECT COUNT(*) FROM vb_devoluciones dv WHERE dv.id_factura = f.id_factura) AS tiene_devoluciones,
+                    cr.fecha_fin AS fecha_vencimiento, cr.saldo_pendiente AS saldo_credito,
+                    pagos.total_pagado AS total_pagos_registrados
              FROM vb_facturas f
              LEFT JOIN vb_clientes c ON f.id_cliente = c.id_cliente
+             LEFT JOIN vb_creditos cr ON cr.id_credito = f.id_credito
+             LEFT JOIN (
+                 SELECT id_factura, SUM(monto) AS total_pagado
+                 FROM vb_facturas_pagos
+                 GROUP BY id_factura
+             ) pagos ON pagos.id_factura = f.id_factura
              LEFT JOIN vb_vendedores v ON f.id_vendedor_registrado = v.id_vendedor
              LEFT JOIN vb_usuarios u ON f.id_vendedor = u.id_usuario
              {$where}
@@ -489,9 +706,23 @@ class Factura
              LIMIT :lim OFFSET :off",
             array_merge($params, ['lim' => $perPage, 'off' => $offset])
         );
+        foreach ($data as &$factura) {
+            $factura = $this->agregarEstadoPago($factura);
+        }
+        unset($factura);
 
         $total = $this->db->fetchOne(
-            "SELECT COUNT(*) AS total FROM vb_facturas f {$where}", $params
+            "SELECT COUNT(*) AS total
+             FROM vb_facturas f
+             LEFT JOIN vb_clientes c ON f.id_cliente = c.id_cliente
+             LEFT JOIN vb_creditos cr ON cr.id_credito = f.id_credito
+             LEFT JOIN (
+                 SELECT id_factura, SUM(monto) AS total_pagado
+                 FROM vb_facturas_pagos
+                 GROUP BY id_factura
+             ) pagos ON pagos.id_factura = f.id_factura
+             {$where}",
+            $params
         );
 
         return [
@@ -538,9 +769,21 @@ class Factura
                         ['f' => $cantDec, 'id' => $det['id_producto']]
                     );
                 } else {
+                    $prodInv = $this->db->fetchOne(
+                        "SELECT unidad_cerrada, unidades_por_intermedio FROM vb_productos WHERE id_producto = :id",
+                        ['id' => $det['id_producto']]
+                    );
+                    if (isset($det['unidades_inventario'])) {
+                        $internas = (int)$det['unidades_inventario'];
+                    } else {
+                        $porIntermedio = max(1, (int)($prodInv['unidades_por_intermedio'] ?? 1));
+                        $internas = ((int)($det['cantidad_unidad'] ?? 0) * max(1, (int)($prodInv['unidad_cerrada'] ?? 1)))
+                            + ((int)($det['cantidad_intermedia'] ?? 0) * $porIntermedio)
+                            + (int)($det['cantidad_fraccion'] ?? 0);
+                    }
                     $this->db->executeAffected(
-                        "UPDATE vb_inventario SET unidad = unidad + :u, fraccion = fraccion + :f WHERE id_producto = :id",
-                        ['u' => $det['cantidad_unidad'], 'f' => $det['cantidad_fraccion'], 'id' => $det['id_producto']]
+                        "UPDATE vb_inventario SET unidad = unidad + :u WHERE id_producto = :id",
+                        ['u' => $internas, 'id' => $det['id_producto']]
                     );
                 }
             }

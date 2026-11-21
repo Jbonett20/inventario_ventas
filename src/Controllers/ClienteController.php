@@ -20,9 +20,11 @@ class ClienteController
 
     public function listar(Request $request): void
     {
-        $page   = (int)$request->get('page', 1);
-        $search = $request->get('search', '');
-        Response::success($this->model->listar($page, 25, $search));
+        $page    = max(1, (int)$request->get('page', 1));
+        $perPage = (int)$request->get('perPage', 25);
+        $perPage = $perPage > 0 ? min($perPage, 500) : 25;
+        $search  = $request->get('search', '');
+        Response::success($this->model->listar($page, $perPage, $search));
     }
 
     public function search(Request $request): void

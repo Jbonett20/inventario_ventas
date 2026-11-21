@@ -6,8 +6,8 @@
                 <p class="text-muted mb-0">Registro de gastos</p>
             </div>
             <div class="d-flex gap-2">
-                <a href="<?= $basePath ?>/exportar/csv?sql=<?= urlencode('SELECT e.fecha AS Fecha, t.nombre AS Tipo, e.pagado_a AS PagadoA, e.valor AS Valor, e.observacion AS Observacion FROM vb_egresos e JOIN vb_tipos_egreso t ON e.id_tipo_egreso=t.id_tipo_egreso ORDER BY e.fecha DESC') ?>&nombre=egresos&titulo=Egresos" class="btn btn-outline-success btn-sm rounded-pill"><i class="fas fa-file-excel me-1"></i>Excel</a>
-                <a href="<?= $basePath ?>/exportar/pdf?sql=<?= urlencode('SELECT e.fecha AS Fecha, t.nombre AS Tipo, e.pagado_a AS PagadoA, e.valor AS Valor FROM vb_egresos e JOIN vb_tipos_egreso t ON e.id_tipo_egreso=t.id_tipo_egreso ORDER BY e.fecha DESC') ?>&nombre=egresos&titulo=Egresos" class="btn btn-outline-danger btn-sm rounded-pill"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+                <a href="<?= $basePath ?>/exportar/csv?sql=<?= urlencode('SELECT e.fecha AS Fecha, t.nombre AS Tipo, e.pagado_a AS PagadoA, e.valor AS Valor, e.metodo_pago AS MetodoPago, e.observacion AS Observacion FROM vb_egresos e JOIN vb_tipos_egreso t ON e.id_tipo_egreso=t.id_tipo_egreso ORDER BY e.fecha DESC') ?>&nombre=egresos&titulo=Egresos" class="btn btn-outline-success btn-sm rounded-pill"><i class="fas fa-file-excel me-1"></i>Excel</a>
+                <a href="<?= $basePath ?>/exportar/pdf?sql=<?= urlencode('SELECT e.fecha AS Fecha, t.nombre AS Tipo, e.pagado_a AS PagadoA, e.valor AS Valor, e.metodo_pago AS MetodoPago FROM vb_egresos e JOIN vb_tipos_egreso t ON e.id_tipo_egreso=t.id_tipo_egreso ORDER BY e.fecha DESC') ?>&nombre=egresos&titulo=Egresos" class="btn btn-outline-danger btn-sm rounded-pill"><i class="fas fa-file-pdf me-1"></i>PDF</a>
                 <button class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#modalEgreso"><i class="fas fa-plus me-2"></i>Nuevo Egreso</button>
             </div>
         </div>
@@ -65,10 +65,10 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
-                    <tr><th>Fecha</th><th>Tipo</th><th>Pagado A</th><th>Valor</th><th>Observación</th><th>Usuario</th><th class="text-center">Acciones</th></tr>
+                    <tr><th>Fecha</th><th>Tipo</th><th>Pagado A</th><th>Valor</th><th>Método de pago</th><th>Observación</th><th>Usuario</th><th class="text-center">Acciones</th></tr>
                 </thead>
                 <tbody id="tbodyEgr">
-                    <tr><td colspan="7" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
+                    <tr><td colspan="8" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -197,6 +197,15 @@
                             <label class="form-label fw-semibold">Fecha</label>
                             <input type="date" class="form-control" name="fecha" value="<?= date('Y-m-d') ?>">
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Método de pago <span class="text-danger">*</span></label>
+                            <select class="form-select" name="metodo_pago" required>
+                                <?php foreach ($metodosPago as $metodoPago): ?>
+                                <option value="<?= \SIG\Core\View::esc($metodoPago) ?>"><?= \SIG\Core\View::esc(ucfirst(strtolower($metodoPago))) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="text-muted">Los egresos en efectivo requieren un turno abierto.</small>
+                        </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Observación</label>
                             <input type="text" class="form-control" name="observacion">
@@ -221,12 +230,12 @@ function cargarEgr(page) {
     var mes = $('#filtroMes').val();
     var desde = $('#egr_desde').val();
     var hasta = $('#egr_hasta').val();
-    $('#tbodyEgr').html('<tr><td colspan="7" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
+    $('#tbodyEgr').html('<tr><td colspan="8" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
     $.getJSON(BASE_URL + '/egresos/listar', { page: page, mes: mes, desde: desde, hasta: hasta }, function(r) {
         if (!r.success) return; var d = r.data, html = '';
-        if (!d.data.length) { html = '<tr><td colspan="7" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>Sin egresos</td></tr>'; }
+        if (!d.data.length) { html = '<tr><td colspan="8" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>Sin egresos</td></tr>'; }
         else { $.each(d.data, function(i, e) {
-            html += '<tr><td>' + e.fecha + '</td><td><span class="badge bg-secondary">' + escHtml(e.tipo_nombre) + '</span></td><td>' + escHtml(e.pagado_a||'-') + '</td><td class="fw-bold text-danger">-$' + formatoNumero(e.valor) + '</td><td><small>' + escHtml(e.observacion||'-') + '</small></td><td><small class="text-muted">' + escHtml(e.nombre_usuario||'-') + '</small></td>' +
+            html += '<tr><td>' + e.fecha + '</td><td><span class="badge bg-secondary">' + escHtml(e.tipo_nombre) + '</span></td><td>' + escHtml(e.pagado_a||'-') + '</td><td class="fw-bold text-danger">-$' + formatoNumero(e.valor) + '</td><td><span class="badge bg-light text-dark">' + escHtml(e.metodo_pago||'EFECTIVO') + '</span></td><td><small>' + escHtml(e.observacion||'-') + '</small></td><td><small class="text-muted">' + escHtml(e.nombre_usuario||'-') + '</small></td>' +
                 '<td class="text-center"><button class="btn btn-sm btn-outline-danger" onclick="borrarEgreso(' + e.id_egreso + ')" title="Eliminar"><i class="fas fa-trash"></i></button></td></tr>';
         }); }
         $('#tbodyEgr').html(html);

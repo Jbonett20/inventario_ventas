@@ -47,8 +47,14 @@ class DevolucionController
             Response::error('El motivo de la devolución es obligatorio', 422);
         }
 
+        $userId = $this->session->getUserId();
+        if ($userId === null) {
+            Response::error('La sesión no tiene un cajero válido.', 401);
+            return;
+        }
+
         try {
-            $id = $this->model->crear($data, $this->session->getUserId());
+            $id = $this->model->crear($data, $userId);
             Response::success(['id_devolucion' => $id], 'Devolución procesada correctamente');
         } catch (\Exception $e) {
             Response::error('Error al procesar devolución: ' . $e->getMessage(), 422);

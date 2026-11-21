@@ -6,6 +6,8 @@ use SIG\Core\Response;
 use SIG\Core\View;
 use SIG\Core\Session;
 use SIG\Models\Egreso;
+use DomainException;
+use InvalidArgumentException;
 
 class EgresoController
 {
@@ -19,6 +21,7 @@ class EgresoController
             'title' => 'Egresos',
             'tipos' => $this->model->tipos(),
             'tiposTodos' => $this->model->tiposTodos(),
+            'metodosPago' => Egreso::METODOS_PAGO,
             'meses' => $this->model->meses(),
             'username'   => $this->session->get('username'),
             'userTipo'   => $this->session->getUserType(),
@@ -46,8 +49,27 @@ class EgresoController
         if ((float)$data['valor'] <= 0) {
             Response::error('El valor debe ser mayor que cero', 422);
         }
-        $this->model->crear($data, $this->session->getUserId());
-        Response::success(null, 'Egreso registrado');
+
+        $metodoPago = strtoupper(trim((string)($data['metodo_pago'] ?? 'EFECTIVO')));
+        if (!in_array($metodoPago, Egreso::METODOS_PAGO, true)) {
+            Response::error('El método de pago del egreso no es válido', 422);
+        }
+        $data['metodo_pago'] = $metodoPago;
+
+        $userId = $this->session->getUserId();
+        if ($userId === null) {
+            Response::error('La sesión no tiene un usuario válido.', 401);
+            return;
+        }
+
+        try {
+            $id = $this->model->crear($data, $userId);
+            Response::success(['id_egreso' => $id], 'Egreso registrado');
+        } catch (DomainException $e) {
+            Response::error($e->getMessage(), 409);
+        } catch (InvalidArgumentException $e) {
+            Response::error($e->getMessage(), 422);
+        }
     }
 
     /**

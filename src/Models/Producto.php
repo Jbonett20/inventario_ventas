@@ -18,6 +18,7 @@ class Producto
     /**
      * Listar todos los productos (con paginación)
      */
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -71,6 +72,7 @@ class Producto
     /**
      * Listar productos para POS (con stock e inventario incluido)
      */
+    /** @return array<string, mixed> */
     public function listarPos(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -94,10 +96,14 @@ class Producto
         $sql = "SELECT p.id_producto, p.codigo, p.descripcion, p.presentacion, 
                        p.valor_venta, p.valor_unidad, p.id_iva,
                        p.stock_minimo, p.fraccion, p.unidad_cerrada,
+                       p.unidades_intermedias, p.unidades_por_intermedio, p.nombre_intermedio, p.valor_intermedio,
                        p.tipo_venta, p.unidad_medida, p.cantidad_por_unidad,
                        i.iva AS iva_porcentaje,
                        inv.unidad AS stock_unidad, inv.fraccion AS stock_fraccion,
-                       CASE WHEN inv.unidad > 0 THEN 'disponible' ELSE 'agotado' END AS estado_stock
+                       CASE WHEN p.tipo_venta = 'FRACCION_DECIMAL'
+                            THEN COALESCE(inv.fraccion, 0) + COALESCE(inv.unidad, 0)
+                            ELSE COALESCE(inv.unidad, 0) END AS stock_vendible,
+                       CASE WHEN COALESCE(inv.unidad, 0) > 0 THEN 'disponible' ELSE 'agotado' END AS estado_stock
                 FROM vb_productos p
                 LEFT JOIN vb_ivas i ON p.id_iva = i.id_iva
                 LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
@@ -127,11 +133,16 @@ class Producto
     /**
      * Buscar productos para autocomplete (facturación)
      */
+    /** @return list<array<string, mixed>> */
     public function buscar(string $query): array
     {
         $sql = "SELECT p.*, i.iva AS iva_valor,
                        inv.unidad, inv.fraccion AS stock_fraccion,
-                       p.tipo_venta, p.unidad_medida, p.cantidad_por_unidad
+                       CASE WHEN p.tipo_venta = 'FRACCION_DECIMAL'
+                            THEN COALESCE(inv.fraccion, 0) + COALESCE(inv.unidad, 0)
+                            ELSE COALESCE(inv.unidad, 0) END AS stock_vendible,
+                       p.tipo_venta, p.unidad_medida, p.cantidad_por_unidad,
+                       p.unidades_intermedias, p.unidades_por_intermedio, p.nombre_intermedio, p.valor_intermedio
                 FROM vb_productos p
                 LEFT JOIN vb_ivas i ON p.id_iva = i.id_iva
                 LEFT JOIN vb_inventario inv ON p.id_producto = inv.id_producto
@@ -156,6 +167,7 @@ class Producto
     /**
      * Obtener un producto por ID
      */
+    /** @return array<string, mixed>|null */
     public function obtenerPorId(int $id): ?array
     {
         $sql = "SELECT p.*, prov.nombre AS proveedor_nombre,
@@ -171,6 +183,8 @@ class Producto
 
     /**
      * Generar presentación automática para productos de fracción decimal
+     *
+     * @param array<string, mixed> $data
      */
     private function generarPresentacion(array $data): string
     {
@@ -210,7 +224,7 @@ class Producto
      * - Si viene un código válido (solo dígitos) y está libre, se respeta.
      * - En cualquier otro caso se genera el siguiente consecutivo.
      */
-    private function resolverCodigo($codigo, int $idExcluir = 0): int
+    private function resolverCodigo(mixed $codigo, int $idExcluir = 0): int
     {
         $codigo = is_string($codigo) ? trim($codigo) : $codigo;
 
@@ -233,8 +247,120 @@ class Producto
         return $this->siguienteCodigo();
     }
 
+    /**
+     * Normaliza y valida el tipo de venta y la equivalencia de empaque.
+     *
+     * Reglas:
+     *   - FRACCION_DECIMAL requiere unidad de medida y cantidad equivalente.
+     *   - Una caja con varias unidades internas debe indicar el precio de la
+     *     unidad interna si esas unidades se venden sueltas.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $antes Producto actual (vacío al crear)
+     * @return array<string, mixed>
+     */
+    private function normalizarEquivalencia(array $data, array $antes = []): array
+    {
+        $tiposValidos = ['UNIDAD', 'CAJA', 'FRACCION_DECIMAL'];
+        $tipoVenta = strtoupper(trim((string)($data['tipo_venta'] ?? $antes['tipo_venta'] ?? 'UNIDAD')));
+        if (!in_array($tipoVenta, $tiposValidos, true)) {
+            throw new \RuntimeException('El tipo de venta debe ser UNIDAD, CAJA o FRACCION_DECIMAL.');
+        }
+        $data['tipo_venta'] = $tipoVenta;
+
+        if ($tipoVenta === 'FRACCION_DECIMAL') {
+            $unidadMedida = trim((string)($data['unidad_medida'] ?? $antes['unidad_medida'] ?? ''));
+            if ($unidadMedida === '') {
+                throw new \RuntimeException('Indique la unidad de medida del producto (litro, metro, kilo...).');
+            }
+            $cantidad = (float)($data['cantidad_por_unidad'] ?? $antes['cantidad_por_unidad'] ?? 1);
+            if ($cantidad <= 0) {
+                throw new \RuntimeException('La cantidad por unidad debe ser mayor que cero.');
+            }
+            $data['unidad_medida'] = $unidadMedida;
+            $data['cantidad_por_unidad'] = $cantidad;
+            $data['unidad_cerrada'] = 1;
+            $data['fraccion'] = 0;
+
+            return $data;
+        }
+
+        $porCaja = (int)($data['unidad_cerrada'] ?? $antes['unidad_cerrada'] ?? 1);
+        if ($porCaja < 1) {
+            throw new \RuntimeException('Una caja debe contener al menos una unidad interna.');
+        }
+        $sueltas = (int)($data['fraccion'] ?? $antes['fraccion'] ?? 0) > 0;
+
+        // Se valida con el nivel intermedio ya normalizado: si la caja trae
+        // sobres, la unidad que se vende suelta es el sobre, no la pastilla.
+        $data = $this->normalizarNivelIntermedio($data);
+        $sueltas = (int)$data['fraccion'] > 0;
+
+        if ($porCaja > 1 && $sueltas && (int)$data['unidades_intermedias'] === 0) {
+            $precioInterno = $data['valor_unidad'] ?? $antes['valor_unidad'] ?? 0;
+            if ((float)$precioInterno <= 0) {
+                throw new \RuntimeException('Indique el precio de la unidad interna para vender unidades sueltas de la caja.');
+            }
+            $data['valor_unidad'] = (float)$precioInterno;
+        }
+
+        $data['unidad_cerrada'] = $porCaja;
+        $data['fraccion'] = $sueltas ? 1 : 0;
+
+        return $data;
+    }
+
+    /**
+     * Nivel intermedio opcional dentro de la caja (caja -> sobre -> pastilla).
+     * Con unidades_intermedias = 0 el producto conserva el comportamiento de
+     * dos niveles (caja -> unidad interna).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function normalizarNivelIntermedio(array $data): array
+    {
+        $intermedios = (int)($data['unidades_intermedias'] ?? 0);
+        if ($intermedios < 0) {
+            throw new \RuntimeException('La cantidad del nivel intermedio no puede ser negativa.');
+        }
+        if ($intermedios === 0) {
+            $data['unidades_intermedias'] = 0;
+            $data['unidades_por_intermedio'] = 1;
+            $data['nombre_intermedio'] = null;
+            $data['valor_intermedio'] = 0;
+            return $data;
+        }
+
+        $porIntermedio = (int)($data['unidades_por_intermedio'] ?? 0);
+        if ($porIntermedio < 1) {
+            throw new \RuntimeException('Indique cuántas unidades trae cada nivel intermedio (ej: pastillas por sobre).');
+        }
+        $nombre = trim((string)($data['nombre_intermedio'] ?? ''));
+        if ($nombre === '') {
+            throw new \RuntimeException('Indique el nombre del nivel intermedio (ej: sobre, ampolla).');
+        }
+        $precioIntermedio = (float)($data['valor_intermedio'] ?? 0);
+        if ($precioIntermedio <= 0) {
+            throw new \RuntimeException('Indique el precio del nivel intermedio (ej: precio del sobre).');
+        }
+
+        $data['unidades_intermedias'] = $intermedios;
+        $data['unidades_por_intermedio'] = $porIntermedio;
+        $data['nombre_intermedio'] = $nombre;
+        $data['valor_intermedio'] = $precioIntermedio;
+        // Con nivel intermedio la caja siempre se puede abrir y vender por
+        // niveles (sobres). La unidad mínima suelta (pastilla) es opcional y
+        // solo se vende si el usuario también marcó "unidades internas sueltas".
+        $data['fraccion'] = (int)($data['fraccion'] ?? 0) > 0 ? 1 : 0;
+
+        return $data;
+    }
+
+    /** @param array<string, mixed> $data */
     public function crear(array $data): int
     {
+        $data = $this->normalizarEquivalencia($data);
         $data['presentacion'] = $this->generarPresentacion($data);
 
         $params = [
@@ -242,7 +368,7 @@ class Producto
             'barras2'            => $data['codigo_barras_2'] ?? '',
             'barras3'            => $data['codigo_barras_3'] ?? '',
             'descripcion'        => $data['descripcion'],
-            'presentacion'       => $data['presentacion'] ?? '',
+            'presentacion'       => $data['presentacion'],
             'marca'              => $data['marca'] ?? '',
             'proveedor'          => ($data['id_proveedor'] ?? null) ?: null,
             'categoria'          => ($data['id_categoria'] ?? null) ?: null,
@@ -250,6 +376,10 @@ class Producto
             'seccion'            => ($data['id_seccion'] ?? null) ?: null,
             'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
             'fraccion'           => (int)($data['fraccion'] ?? 0),
+            'unidades_intermedias' => (int)($data['unidades_intermedias'] ?? 0),
+            'unidades_por_intermedio' => (int)($data['unidades_por_intermedio'] ?? 1),
+            'nombre_intermedio'  => $data['nombre_intermedio'] ?? null,
+            'valor_intermedio'   => (float)($data['valor_intermedio'] ?? 0),
             'compra'             => $data['valor_compra'] ?? 0,
             'venta'              => $data['valor_venta'] ?? 0,
             'unidad'             => $data['valor_unidad'] ?? 0,
@@ -267,12 +397,14 @@ class Producto
                     (codigo, codigo_barras_1, codigo_barras_2, codigo_barras_3,
                      descripcion, presentacion, marca, id_proveedor, id_categoria,
                      id_iva, id_seccion, unidad_cerrada, fraccion,
+                     unidades_intermedias, unidades_por_intermedio, nombre_intermedio, valor_intermedio,
                      valor_compra, valor_venta, valor_unidad, precio_maximo_regulado, rentabilidad, stock_minimo, imagen,
                      tipo_venta, unidad_medida, cantidad_por_unidad)
                  VALUES 
                     (:codigo, :barras1, :barras2, :barras3,
                      :descripcion, :presentacion, :marca, :proveedor, :categoria,
                      :iva, :seccion, :unidad_cerrada, :fraccion,
+                     :unidades_intermedias, :unidades_por_intermedio, :nombre_intermedio, :valor_intermedio,
                      :compra, :venta, :unidad, :tope, :rentabilidad, :stock_minimo, :imagen,
                      :tipo_venta, :unidad_medida, :cantidad_por_unidad)";
 
@@ -316,17 +448,22 @@ class Producto
      * Importante: si $data NO trae los precios (por ejemplo cuando un cajero
      * edita solo la descripción), se conservan los que ya tenía el producto.
      * Antes se sobrescribían con 0 y el producto quedaba en $0.
+     *
+     * @param array<string, mixed> $data
      */
     public function actualizar(int $id, array $data, ?int $idUsuario = null): int
     {
-        $data['presentacion'] = $this->generarPresentacion($data);
-
         // Valores anteriores: sirven para conservar precios y para la trazabilidad
         $antes = $this->db->fetchOne(
-            "SELECT valor_compra, valor_venta, valor_unidad, rentabilidad, precio_maximo_regulado
+            "SELECT valor_compra, valor_venta, valor_unidad, rentabilidad, precio_maximo_regulado,
+                    tipo_venta, unidad_medida, cantidad_por_unidad, unidad_cerrada, fraccion,
+                    unidades_intermedias, unidades_por_intermedio, nombre_intermedio, valor_intermedio
              FROM vb_productos WHERE id_producto = :id",
             ['id' => $id]
         ) ?: [];
+
+        $data = $this->normalizarEquivalencia($data, $antes);
+        $data['presentacion'] = $this->generarPresentacion($data);
 
         $compra = (array_key_exists('valor_compra', $data) && $data['valor_compra'] !== '' && $data['valor_compra'] !== null)
             ? (float)$data['valor_compra'] : (float)($antes['valor_compra'] ?? 0);
@@ -352,6 +489,10 @@ class Producto
                     id_seccion = :seccion,
                     unidad_cerrada = :unidad_cerrada,
                     fraccion = :fraccion,
+                    unidades_intermedias = :unidades_intermedias,
+                    unidades_por_intermedio = :unidades_por_intermedio,
+                    nombre_intermedio = :nombre_intermedio,
+                    valor_intermedio = :valor_intermedio,
                     valor_compra = :compra,
                     valor_venta = :venta,
                     valor_unidad = :unidad,
@@ -370,7 +511,7 @@ class Producto
             'barras2'            => $data['codigo_barras_2'] ?? '',
             'barras3'            => $data['codigo_barras_3'] ?? '',
             'descripcion'        => $data['descripcion'],
-            'presentacion'       => $data['presentacion'] ?? '',
+            'presentacion'       => $data['presentacion'],
             'marca'              => $data['marca'] ?? '',
             'proveedor'          => ($data['id_proveedor'] ?? null) ?: null,
             'categoria'          => ($data['id_categoria'] ?? null) ?: null,
@@ -378,6 +519,10 @@ class Producto
             'seccion'            => ($data['id_seccion'] ?? null) ?: null,
             'unidad_cerrada'     => (int)($data['unidad_cerrada'] ?? 1),
             'fraccion'           => (int)($data['fraccion'] ?? 0),
+            'unidades_intermedias' => (int)($data['unidades_intermedias'] ?? 0),
+            'unidades_por_intermedio' => (int)($data['unidades_por_intermedio'] ?? 1),
+            'nombre_intermedio'  => $data['nombre_intermedio'] ?? null,
+            'valor_intermedio'   => (float)($data['valor_intermedio'] ?? 0),
             'compra'             => $compra,
             'venta'              => $venta,
             'unidad'             => $unidad,
@@ -385,7 +530,7 @@ class Producto
             'tope'               => $tope,
             'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
             'imagen'             => $data['imagen'] ?? '',
-            'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
+            'tipo_venta'         => $data['tipo_venta'],
             'unidad_medida'      => $data['unidad_medida'] ?? '',
             'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
         ]);
@@ -431,6 +576,7 @@ class Producto
     /**
      * Obtener listas para selects (categorías, proveedores, IVAs, secciones)
      */
+    /** @return array<string, mixed> */
     public function obtenerCatalogos(): array
     {
         return [

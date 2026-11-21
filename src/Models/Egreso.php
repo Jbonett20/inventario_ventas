@@ -2,14 +2,21 @@
 namespace SIG\Models;
 
 use SIG\Core\Database;
+use DomainException;
+use InvalidArgumentException;
+use Throwable;
 
 class Egreso
 {
+    public const array METODOS_PAGO = ['EFECTIVO', 'NEQUI', 'DAVIPLATA', 'TRANSFERENCIA', 'OTROS'];
+
     private Database $db;
     public function __construct() { $this->db = Database::getInstance(); }
 
     /**
      * Listar egresos con filtro por mes o por rango de fechas
+     *
+     * @return array<string, mixed>
      */
     public function listar(int $page = 1, int $perPage = 25, string $mes = '', string $desde = '', string $hasta = ''): array
     {
@@ -44,18 +51,62 @@ class Egreso
                 'totalPages' => ceil(($total['total'] ?? 0) / $perPage), 'suma' => (float)($suma['total'] ?? 0)];
     }
 
+    /** @param array<string, mixed> $d */
     public function crear(array $d, int $idUsuario): int
     {
-        return $this->db->insert(
-            "INSERT INTO vb_egresos (id_tipo_egreso, pagado_a, valor, fecha, mes, observacion, id_usuario)
-             VALUES (:tipo, :pag, :val, :fec, :mes, :obs, :uid)",
-            [
-                'tipo' => $d['id_tipo_egreso'], 'pag' => $d['pagado_a'] ?? '',
-                'val' => $d['valor'], 'fec' => $d['fecha'] ?? date('Y-m-d'),
-                'mes' => date('Y-m', strtotime($d['fecha'] ?? date('Y-m-d'))),
-                'obs' => $d['observacion'] ?? '', 'uid' => $idUsuario,
-            ]
-        );
+        if ($idUsuario <= 0) {
+            throw new InvalidArgumentException('No se pudo identificar al usuario.');
+        }
+
+        $metodoPago = strtoupper(trim((string)($d['metodo_pago'] ?? 'EFECTIVO')));
+        if ($metodoPago === '') {
+            $metodoPago = 'EFECTIVO';
+        }
+        if (!in_array($metodoPago, self::METODOS_PAGO, true)) {
+            throw new InvalidArgumentException('El método de pago del egreso no es válido.');
+        }
+
+        $fecha = (string)($d['fecha'] ?? date('Y-m-d'));
+        $timestamp = strtotime($fecha);
+        if ($timestamp === false) {
+            throw new InvalidArgumentException('La fecha del egreso no es válida.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $idTurno = null;
+            if ($metodoPago === 'EFECTIVO') {
+                $idTurno = (new TurnoCaja())->bloquearTurnoAbierto($idUsuario);
+                if ($idTurno === null) {
+                    throw new DomainException('Debes abrir un turno de caja para registrar egresos en efectivo.');
+                }
+            }
+
+            $idEgreso = $this->db->insert(
+                "INSERT INTO vb_egresos
+                    (id_tipo_egreso, pagado_a, valor, metodo_pago, fecha, mes, observacion, id_usuario, id_turno)
+                 VALUES (:tipo, :pag, :val, :metodo, :fec, :mes, :obs, :uid, :turno)",
+                [
+                    'tipo'   => $d['id_tipo_egreso'],
+                    'pag'    => $d['pagado_a'] ?? '',
+                    'val'    => $d['valor'],
+                    'metodo' => $metodoPago,
+                    'fec'    => $fecha,
+                    'mes'    => date('Y-m', $timestamp),
+                    'obs'    => $d['observacion'] ?? '',
+                    'uid'    => $idUsuario,
+                    'turno'  => $idTurno,
+                ]
+            );
+
+            $this->db->commit();
+            return $idEgreso;
+        } catch (Throwable $e) {
+            if ($this->db->getConnection()->inTransaction()) {
+                $this->db->rollback();
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -74,6 +125,7 @@ class Egreso
         return $this->db->executeAffected("DELETE FROM vb_egresos WHERE id_egreso = :id", ['id' => $id]);
     }
 
+    /** @return list<array<string, mixed>> */
     public function tipos(): array
     {
         return $this->db->select("SELECT * FROM vb_tipos_egreso WHERE activo = 1 ORDER BY nombre");
@@ -81,6 +133,8 @@ class Egreso
 
     /**
      * Todos los tipos de egreso (incluye inactivos) con su uso
+     *
+     * @return list<array<string, mixed>>
      */
     public function tiposTodos(): array
     {
@@ -95,6 +149,8 @@ class Egreso
 
     /**
      * Crear o actualizar un tipo de egreso
+     *
+     * @param array<string, mixed> $d
      */
     public function guardarTipo(array $d): int
     {
@@ -152,6 +208,8 @@ class Egreso
      * Eliminar un tipo de egreso.
      * La FK vb_egresos.id_tipo_egreso es ON DELETE CASCADE, por lo que se
      * bloquea la eliminación si el tipo tiene egresos registrados.
+     *
+     * @return array{nombre: mixed}
      */
     public function eliminarTipo(int $id): array
     {
@@ -181,6 +239,7 @@ class Egreso
         return ['nombre' => $tipo['nombre']];
     }
 
+    /** @return list<array<string, mixed>> */
     public function meses(): array
     {
         return $this->db->select(

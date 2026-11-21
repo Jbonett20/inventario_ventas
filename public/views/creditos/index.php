@@ -243,16 +243,27 @@ function cargarCred(page) {
         for (var i = 1; i <= d.totalPages; i++) { ph += '<li class="page-item ' + (i === d.page ? 'active' : '') + '"><a class="page-link" href="#" onclick="cargarCred(' + i + ');return false;">' + i + '</a></li>'; }
         $('#pagCred').html(ph);
     });
-    // Cargar clientes en select
-    if (!$('#formCredito select[name="id_cliente"] option').length > 1) {
-        $.getJSON(BASE_URL + '/clientes/listar?page=1&perPage=200', function(r) {
-            if (!r.success) return;
-            var opts = '<option value="">Seleccione un cliente...</option>';
-            $.each(r.data.data, function(i, c) { opts += '<option value="' + c.id_cliente + '">' + escHtml(c.nombre) + ' (' + c.documento + ')</option>'; });
-            $('#formCredito select[name="id_cliente"]').html(opts);
-        });
-    }
 }
+
+// Los clientes se cargan aparte para que el select del modal no dependa del listado de créditos.
+function cargarClientesCredito() {
+    var $select = $('#formCredito select[name="id_cliente"]');
+    if ($select.data('cargando') === true) return;
+    $select.data('cargando', true);
+
+    $.getJSON(BASE_URL + '/clientes/listar', { page: 1, perPage: 200 }, function(r) {
+        if (!r.success || !r.data || !r.data.data) return;
+        var opts = '<option value="">Seleccione un cliente...</option>';
+        $.each(r.data.data, function(i, c) {
+            opts += '<option value="' + c.id_cliente + '">' + escHtml(c.nombre) + ' (' + escHtml(c.documento) + ')</option>';
+        });
+        $select.html(opts);
+    }).always(function() {
+        $select.data('cargando', false);
+    });
+}
+
+$('#modalCredito').on('show.bs.modal', cargarClientesCredito);
 
 $('#formCredito').on('submit', function(e) {
     e.preventDefault();
@@ -301,5 +312,5 @@ function reactivarCredito(id, codigo) {
         error:function(xhr){PNotify.error({text:(xhr.responseJSON&&xhr.responseJSON.message)||'Error'});}});
 }
 
-$(function(){cargarCred(1);});
+$(function(){cargarCred(1); cargarClientesCredito();});
 </script>

@@ -33,9 +33,15 @@ class BalanceController
     {
         $fecha = $r->get('fecha', date('Y-m-d'));
 
-        // Base diaria
+        // Base diaria: se toma de los turnos de caja abiertos/cerrados ese día
         $base = $this->db->fetchOne(
-            "SELECT COALESCE(SUM(base), 0) AS total FROM vb_base_diaria WHERE fecha = :fecha",
+            "SELECT COALESCE(SUM(base_inicial), 0) AS total FROM vb_turnos_caja WHERE fecha = :fecha",
+            ['fecha' => $fecha]
+        );
+        $turnos = $this->db->fetchOne(
+            "SELECT COUNT(*) AS cantidad,
+                    SUM(CASE WHEN estado = 'ABIERTO' THEN 1 ELSE 0 END) AS abiertos
+             FROM vb_turnos_caja WHERE fecha = :fecha",
             ['fecha' => $fecha]
         );
 
@@ -101,6 +107,10 @@ class BalanceController
         Response::success([
             'fecha'          => $fecha,
             'base_diaria'    => $totalBase,
+            'turnos'         => [
+                'cantidad' => (int)($turnos['cantidad'] ?? 0),
+                'abiertos' => (int)($turnos['abiertos'] ?? 0),
+            ],
             'ventas'         => [
                 'cantidad'     => (int)($ventas['cantidad'] ?? 0),
                 'total'        => $totalVentas,
@@ -204,52 +214,6 @@ class BalanceController
     }
 
     /**
-     * (anterior) Cerrar el día guardando solo el capital del inventario.
-     * Se conserva como respaldo por si se necesita el cálculo directo.
-     */
-    private function cerrarSoloCapital(string $fecha): int
-    {
-        // Verificar si ya está cerrado
-        $existe = $this->db->fetchOne(
-            "SELECT id_cierre FROM vb_cierres_inventario WHERE fecha_cierre = :fecha",
-            ['fecha' => $fecha]
-        );
-        if ($existe) {
-            throw new \RuntimeException('El día ya está cerrado');
-        }
-
-        // Obtener resumen del inventario
-        $inventario = $this->db->fetchOne(
-            "SELECT 
-                COALESCE(SUM(inv.unidad), 0) AS total_unidad,
-                COALESCE(SUM(inv.fraccion), 0) AS total_fraccion,
-                COALESCE(SUM(p.valor_compra * inv.unidad), 0) AS capital_invertido,
-                COALESCE(SUM(p.valor_venta * inv.unidad), 0) AS capital_total
-             FROM vb_inventario inv
-             JOIN vb_productos p ON inv.id_producto = p.id_producto
-             WHERE p.activo = 1"
-        );
-
-        $capInvertido = (float)($inventario['capital_invertido'] ?? 0);
-        $capTotal = (float)($inventario['capital_total'] ?? 0);
-
-        $id = $this->db->insert(
-            "INSERT INTO vb_cierres_inventario (total_invertido, total_capital, total_utilidad, total_unidad, total_fraccion, fecha_cierre)
-             VALUES (:inv, :cap, :util, :und, :frac, :fecha)",
-            [
-                'inv'   => $capInvertido,
-                'cap'   => $capTotal,
-                'util'  => $capTotal - $capInvertido,
-                'und'   => (int)($inventario['total_unidad'] ?? 0),
-                'frac'  => (int)($inventario['total_fraccion'] ?? 0),
-                'fecha' => $fecha,
-            ]
-        );
-
-        return (int)$id;
-    }
-
-    /**
      * Exportar balance a PDF
      */
     public function exportarPdf(Request $r): void
@@ -259,7 +223,7 @@ class BalanceController
         // Obtener datos del balance
         $resumen = $this->db->fetchOne(
             "SELECT 
-                (SELECT COALESCE(SUM(base), 0) FROM vb_base_diaria WHERE fecha = :f1) AS base_diaria,
+                (SELECT COALESCE(SUM(base_inicial), 0) FROM vb_turnos_caja WHERE fecha = :f1) AS base_diaria,
                 (SELECT COALESCE(COUNT(*), 0) FROM vb_facturas WHERE fecha = :f2 AND estado = 'ACTIVA') AS ventas_cant,
                 (SELECT COALESCE(SUM(total), 0) FROM vb_facturas WHERE fecha = :f3 AND estado = 'ACTIVA') AS ventas_total,
                 (SELECT COALESCE(SUM(cambio), 0) FROM vb_facturas WHERE fecha = :f4 AND estado = 'ACTIVA') AS ventas_cambio,

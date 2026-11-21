@@ -25,6 +25,7 @@ class CierreInventario
      * Calcula todos los totales del periodo SIN guardar nada.
      * Sirve para previsualizar antes de cerrar.
      */
+    /** @return array<string, mixed> */
     public function calcular(string $desde, string $hasta): array
     {
         if (!$this->fechaValida($desde) || !$this->fechaValida($hasta)) {
@@ -145,6 +146,7 @@ class CierreInventario
      * Comprueba si otro cierre ya cubre ese rango de fechas.
      * Devuelve el cierre que se cruza, o null si el rango esta libre.
      */
+    /** @return array<string, mixed>|null */
     public function buscarSolape(string $desde, string $hasta, int $excluir = 0): ?array
     {
         $sql = "SELECT id_cierre, periodo, fecha_desde, fecha_hasta, estado
@@ -167,6 +169,7 @@ class CierreInventario
     /**
      * Ejecuta el cierre de un periodo (calcula y guarda).
      */
+    /** @return array<string, mixed> */
     public function cerrar(string $desde, string $hasta, string $periodo, ?int $idUsuario = null, string $observacion = '', bool $permitirSolape = false): array
     {
         $periodo = $this->normalizarPeriodo($periodo);
@@ -261,6 +264,7 @@ class CierreInventario
     /**
      * Ejecuta un cierre programado que ya llego a su fecha final.
      */
+    /** @return array<string, mixed> */
     public function ejecutarProgramado(int $idCierre, ?int $idUsuario = null): array
     {
         $c = $this->obtener($idCierre);
@@ -331,6 +335,7 @@ class CierreInventario
         );
     }
 
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25, string $estado = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -371,6 +376,7 @@ class CierreInventario
         ];
     }
 
+    /** @return array<string, mixed>|null */
     public function obtener(int $idCierre): ?array
     {
         return $this->db->fetchOne(
@@ -386,6 +392,7 @@ class CierreInventario
      * Detalle del período de un cierre: en qué se vendió, devoluciones,
      * egresos por tipo y qué mercancía entró.
      */
+    /** @return array<string, mixed> */
     public function detallePeriodo(int $idCierre): array
     {
         $c = $this->obtener($idCierre);
@@ -462,6 +469,7 @@ class CierreInventario
      * Rango sugerido para el próximo cierre, según el período elegido:
      * arranca el día siguiente al último cierre y termina hoy.
      */
+    /** @return array{desde: string, hasta: string, dias: int} */
     public function rangoSugerido(string $periodo): array
     {
         $periodo = $this->normalizarPeriodo($periodo);

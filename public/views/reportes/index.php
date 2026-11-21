@@ -69,6 +69,40 @@
     </div>
 </div>
 
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="fw-bold mb-0"><i class="fas fa-cash-register me-2"></i>Ventas diarias por cajero</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    <input type="date" class="form-control form-control-sm" id="filtroFechaCajero" value="<?= date('Y-m-d') ?>">
+                    <button class="btn btn-primary btn-sm text-nowrap" type="button" onclick="cargarVentasPorCajero()">
+                        <i class="fas fa-search me-1"></i>Consultar
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm text-nowrap" type="button" onclick="imprimirVentasPorCajero()">
+                        <i class="fas fa-print me-1"></i>Imprimir
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>Cajero</th><th class="text-center">Facturas activas</th><th class="text-end">Total vendido</th></tr>
+                        </thead>
+                        <tbody id="tbodyVentasCajero">
+                            <tr><td colspan="3" class="text-center text-muted py-4">Selecciona una fecha para consultar.</td></tr>
+                        </tbody>
+                        <tfoot class="table-light fw-bold">
+                            <tr><td>Total general</td><td class="text-center" id="cantidadVentasCajero">0</td><td class="text-end" id="totalVentasCajero">$0</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Top productos -->
 <div class="row mt-4">
     <div class="col-12">
@@ -92,6 +126,56 @@
 function escHtml(s) { if (!s) return ''; return $('<div>').text(s).html(); }
 function formatoNumero(n) { return parseFloat(n||0).toLocaleString('es-CO', {minimumFractionDigits:0}); }
 let chartVentas = null, chartPago = null;
+
+function cargarVentasPorCajero() {
+    var fecha = $('#filtroFechaCajero').val();
+    $('#tbodyVentasCajero').html('<tr><td colspan="3" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-1"></i>Cargando...</td></tr>');
+    $('#cantidadVentasCajero').text('0');
+    $('#totalVentasCajero').text('$0');
+    $.getJSON(BASE_URL + '/reportes/ventas-por-cajero', {fecha: fecha})
+        .done(function(r) {
+            if (!r.success) {
+                PNotify.error({ text: r.message || 'No se pudo consultar el reporte por cajero.' });
+                return;
+            }
+
+            var html = '';
+            if (!r.data.cajeros.length) {
+                html = '<tr><td colspan="3" class="text-center text-muted py-4">No hay ventas activas para esta fecha.</td></tr>';
+            } else {
+                $.each(r.data.cajeros, function(i, cajero) {
+                    html += '<tr><td>' + escHtml(cajero.cajero) + '</td>' +
+                        '<td class="text-center">' + cajero.cantidad + '</td>' +
+                        '<td class="text-end fw-semibold">$' + formatoNumero(cajero.total) + '</td></tr>';
+                });
+            }
+            $('#tbodyVentasCajero').html(html);
+            $('#cantidadVentasCajero').text(r.data.cantidad);
+            $('#totalVentasCajero').text('$' + formatoNumero(r.data.total));
+        })
+        .fail(function(xhr) {
+            $('#tbodyVentasCajero').html('<tr><td colspan="3" class="text-center text-danger py-4">No se pudo cargar el reporte.</td></tr>');
+            PNotify.error({
+                text: xhr.responseJSON && xhr.responseJSON.message
+                    ? xhr.responseJSON.message
+                    : 'No se pudo consultar el reporte por cajero.'
+            });
+        });
+}
+
+function imprimirVentasPorCajero() {
+    var fecha = $('#filtroFechaCajero').val();
+    if (!fecha) {
+        PNotify.error({ text: 'Selecciona la fecha del reporte.' });
+        return;
+    }
+
+    window.open(
+        BASE_URL + '/reportes/ventas-por-cajero/imprimir?fecha=' + encodeURIComponent(fecha),
+        '_blank',
+        'noopener'
+    );
+}
 
 function cargarReportes() {
     var inicio = $('#filtroInicio').val();
@@ -173,5 +257,5 @@ function cargarReportes() {
     });
 }
 
-$(function() { cargarReportes(); });
+$(function() { cargarReportes(); cargarVentasPorCajero(); });
 </script>

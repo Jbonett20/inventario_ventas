@@ -12,6 +12,7 @@ class Cliente
         $this->db = Database::getInstance();
     }
 
+    /** @return array{data: list<array<string, mixed>>, total: int, page: int, totalPages: float} */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -43,6 +44,7 @@ class Cliente
         ];
     }
 
+    /** @return list<array<string, mixed>> */
     public function buscar(string $query): array
     {
         return $this->db->select(
@@ -53,11 +55,13 @@ class Cliente
         );
     }
 
+    /** @return array<string, mixed>|null */
     public function obtenerPorId(int $id): ?array
     {
         return $this->db->fetchOne("SELECT * FROM vb_clientes WHERE id_cliente = :id", ['id' => $id]);
     }
 
+    /** @param array<string, mixed> $data */
     public function crear(array $data): int
     {
         return $this->db->insert(
@@ -76,6 +80,7 @@ class Cliente
         );
     }
 
+    /** @param array<string, mixed> $data */
     public function actualizar(int $id, array $data): int
     {
         return $this->db->executeAffected(

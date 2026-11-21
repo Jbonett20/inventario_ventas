@@ -11,12 +11,17 @@ use RuntimeException;
  */
 class Router
 {
+    /** @var list<array{method: string, pattern: string, regex: string, handler: callable|string, middleware: array<array-key, mixed>}> */
     private array $routes = [];
+    /** @var list<callable|string|object> */
     private array $middleware = [];
     private string $prefix = '';
 
     /**
      * Registrar una ruta GET
+     *
+     * @param callable|string $handler
+     * @param array<array-key, mixed> $middleware
      */
     public function get(string $pattern, $handler, array $middleware = []): void
     {
@@ -25,6 +30,9 @@ class Router
 
     /**
      * Registrar una ruta POST
+     *
+     * @param callable|string $handler
+     * @param array<array-key, mixed> $middleware
      */
     public function post(string $pattern, $handler, array $middleware = []): void
     {
@@ -33,6 +41,9 @@ class Router
 
     /**
      * Agregar una ruta al registro
+     *
+     * @param callable|string $handler
+     * @param array<array-key, mixed> $middleware
      */
     private function addRoute(string $method, string $pattern, $handler, array $middleware): void
     {
@@ -64,6 +75,8 @@ class Router
 
     /**
      * Registrar middleware global
+     *
+     * @param callable|string|object $middleware
      */
     public function addMiddleware($middleware): void
     {
@@ -115,6 +128,8 @@ class Router
 
     /**
      * Ejecutar un middleware
+     *
+     * @param callable|string|object $middleware
      */
     private function executeMiddleware($middleware, Request $request): mixed
     {
@@ -135,6 +150,8 @@ class Router
 
     /**
      * Ejecutar el handler de la ruta
+     *
+     * @param callable|string $handler
      */
     private function executeHandler($handler, Request $request): mixed
     {
@@ -192,6 +209,8 @@ class Router
 
     /**
      * Obtener todas las rutas registradas
+     *
+     * @return list<array{method: string, pattern: string, regex: string, handler: callable|string, middleware: array<array-key, mixed>}>
      */
     public function getRoutes(): array
     {
