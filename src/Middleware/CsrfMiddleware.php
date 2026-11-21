@@ -14,6 +14,8 @@ class CsrfMiddleware
 {
     /**
      * Lista de rutas que no requieren validación CSRF
+     *
+     * @var list<string>
      */
     private array $excludedRoutes = [
         '/api/webhook',

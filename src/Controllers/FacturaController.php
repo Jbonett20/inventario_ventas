@@ -8,6 +8,7 @@ use SIG\Core\Session;
 use SIG\Core\Database;
 use SIG\Models\Factura;
 use SIG\Models\Producto;
+use SIG\Models\TurnoCaja;
 use SIG\Middleware\RoleMiddleware;
 
 class FacturaController
@@ -32,13 +33,9 @@ class FacturaController
             ]);
         }
 
-        // Obtener base diaria del usuario para hoy
         $db = Database::getInstance();
         $userId = $this->session->getUserId();
-        $baseDiaria = $db->fetchOne(
-            "SELECT id_base, base FROM vb_base_diaria WHERE id_usuario = :uid AND fecha = CURDATE()",
-            ['uid' => $userId]
-        );
+        $turnoAbierto = $userId !== null ? (new TurnoCaja())->obtenerAbierto($userId) : null;
 
         // Otherwise show the POS
         $prodModel = new Producto();
@@ -58,9 +55,8 @@ class FacturaController
             'productos'   => $prodModel->buscar(''),
             'catalogos'   => $prodModel->obtenerCatalogos(),
             'isAdmin'     => RoleMiddleware::isAdmin(),
-            'isCajero'    => RoleMiddleware::hasRole('cajero'),
             'puedeFE'     => $mostrarFE,
-            'baseDiaria'  => $baseDiaria,
+            'turnoAbierto' => $turnoAbierto,
             'userId'      => $userId,
             'usuarioNombre' => $usuario['nombre_completo'] ?? $this->session->get('username'),
             'username'    => $this->session->get('username'),
@@ -138,6 +134,8 @@ class FacturaController
                 [
                     'id_cliente'   => (int)($data['id_cliente'] ?? 1),
                     'tipo_pago'    => $data['tipo_pago'] ?? 'EFECTIVO',
+                    'venta_credito' => filter_var($data['venta_credito'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                    'fecha_vencimiento' => $data['fecha_vencimiento'] ?? null,
                     'descuento'    => (float)($data['descuento'] ?? 0),
                     'pago_recibido'=> (float)($data['pago_recibido'] ?? 0),
                     'pagos'        => is_array($data['pagos'] ?? null) ? $data['pagos'] : null,
@@ -162,6 +160,12 @@ class FacturaController
 
     public function listar(Request $r): void
     {
+        $estadoPago = strtoupper(trim((string)$r->get('estado_pago', '')));
+        if (!in_array($estadoPago, ['', 'PENDIENTE', 'PAGADA', 'EN MORA'], true)) {
+            Response::error('El estado de pago seleccionado no es válido', 422);
+            return;
+        }
+
         $filtros = [
             'page'      => (int)$r->get('page', 1),
             'perPage'   => (int)$r->get('perPage', 25),
@@ -169,6 +173,7 @@ class FacturaController
             'tipo'      => $r->get('tipo', ''),
             'tipo_pago' => $r->get('tipo_pago', ''),
             'estado'    => $r->get('estado', ''),
+            'estado_pago' => $estadoPago,
             'fecha_ini' => $r->get('fecha_ini', ''),
             'fecha_fin' => $r->get('fecha_fin', ''),
             'codigo'    => $r->get('codigo', ''),
@@ -282,8 +287,8 @@ class FacturaController
             }
         }
 
-        if (($factura['pago_recibido'] ?? 0) > 0) {
-            $html .= '<tr><td>Recibido:</td><td style="text-align:right">$' . number_format($factura['pago_recibido'] ?? 0, 0, ',', '.') . '</td></tr>';
+        if ($factura['pago_recibido'] > 0) {
+            $html .= '<tr><td>Recibido:</td><td style="text-align:right">$' . number_format($factura['pago_recibido'], 0, ',', '.') . '</td></tr>';
             $html .= '<tr><td>Cambio:</td><td style="text-align:right">$' . number_format($factura['cambio'] ?? 0, 0, ',', '.') . '</td></tr>';
         }
         $html .= '</table>';

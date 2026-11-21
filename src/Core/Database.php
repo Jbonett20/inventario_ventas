@@ -15,6 +15,7 @@ class Database
 {
     private static ?Database $instance = null;
     private ?PDO $pdo = null;
+    /** @var array<string, mixed> */
     private array $config;
 
     private function __construct()
@@ -78,8 +79,8 @@ class Database
      * Ejecutar una consulta SELECT con prepared statements
      * 
      * @param string $sql  Consulta SQL con placeholders (:nombre o ?)
-     * @param array  $params Parámetros para la consulta
-     * @return array  Array de resultados
+     * @param array<string, mixed> $params Parámetros para la consulta
+     * @return list<array<string, mixed>> Array de resultados
      */
     public function select(string $sql, array $params = []): array
     {
@@ -89,6 +90,9 @@ class Database
 
     /**
      * Obtener una sola fila
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>|null
      */
     public function fetchOne(string $sql, array $params = []): ?array
     {
@@ -99,6 +103,8 @@ class Database
 
     /**
      * Ejecutar una consulta INSERT y devolver el ID insertado
+     *
+     * @param array<string, mixed> $params
      */
     public function insert(string $sql, array $params = []): int
     {
@@ -108,6 +114,8 @@ class Database
 
     /**
      * Ejecutar una consulta UPDATE/DELETE y devolver filas afectadas
+     *
+     * @param array<string, mixed> $params
      */
     public function executeAffected(string $sql, array $params = []): int
     {
@@ -119,7 +127,7 @@ class Database
      * Ejecutar cualquier consulta preparada
      * 
      * @param string $sql  Consulta SQL con placeholders
-     * @param array  $params Parámetros seguros
+     * @param array<string, mixed> $params Parámetros seguros
      * @return \PDOStatement
      */
     public function execute(string $sql, array $params = []): \PDOStatement

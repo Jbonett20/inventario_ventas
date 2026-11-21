@@ -16,6 +16,8 @@ class Devolucion
     /**
      * Procesar una devolución con reversión de inventario
      * Soporta devoluciones parciales múltiples
+     *
+     * @param array<string, mixed> $data
      */
     public function crear(array $data, int $idUsuario): int
     {
@@ -43,13 +45,24 @@ class Devolucion
 
         $this->db->beginTransaction();
         try {
+            $idTurno = (new TurnoCaja())->bloquearTurnoAbierto($idUsuario);
+            if ($idTurno === null) {
+                throw new RuntimeException('Debes abrir un turno de caja antes de registrar devoluciones.');
+            }
+
             // Generar código de devolución
             $codigo = 'DEV-' . $factura['codigo'] . '-' . date('YmdHis');
 
-            // Calcular total
+            // Calcular total: cajas a su precio, nivel intermedio al suyo y unidades mínimas al suyo
             $total = 0;
             foreach ($detalles as &$det) {
-                $det['subtotal'] = ($det['cantidad_unidad'] ?? 0) * ($det['valor_unitario'] ?? 0);
+                $cantU = (int)($det['cantidad_unidad'] ?? 0);
+                $cantI = (int)($det['cantidad_intermedia'] ?? 0);
+                $cantF = (int)($det['cantidad_fraccion'] ?? 0);
+                $precioCaja = (float)($det['valor_unitario'] ?? 0);
+                $precioIntermedio = (float)($det['valor_intermedio'] ?? 0);
+                $precioInterno = (float)($det['valor_unidad'] ?? 0) > 0 ? (float)$det['valor_unidad'] : $precioCaja;
+                $det['subtotal'] = ($cantU * $precioCaja) + ($cantI * $precioIntermedio) + ($cantF * $precioInterno);
                 $total += $det['subtotal'];
             }
             unset($det);
@@ -60,8 +73,8 @@ class Devolucion
 
             // Insertar devolución
             $idDev = $this->db->insert(
-                "INSERT INTO vb_devoluciones (codigo, id_factura, id_cliente, motivo, total, tipo_pago, id_usuario, fecha)
-                 VALUES (:cod, :fac, :cli, :mot, :tot, :tpago, :uid, CURDATE())",
+                "INSERT INTO vb_devoluciones (codigo, id_factura, id_cliente, motivo, total, tipo_pago, id_usuario, id_turno, fecha)
+                 VALUES (:cod, :fac, :cli, :mot, :tot, :tpago, :uid, :turno, CURDATE())",
                 [
                     'cod'   => $codigo,
                     'fac'   => $idFactura,
@@ -70,20 +83,22 @@ class Devolucion
                     'tot'   => $total,
                     'tpago' => $infoPagos['resumen'],
                     'uid'   => $idUsuario,
+                    'turno' => $idTurno,
                 ]
             );
 
             // Con qué se le devolvió la plata al cliente
             foreach ($infoPagos['pagos'] as $pg) {
                 $this->db->insert(
-                    "INSERT INTO vb_devoluciones_pagos (id_devolucion, metodo, monto, referencia, id_usuario, created_at)
-                     VALUES (:dev, :metodo, :monto, :ref, :uid, NOW())",
+                    "INSERT INTO vb_devoluciones_pagos (id_devolucion, metodo, monto, referencia, id_usuario, id_turno, created_at)
+                     VALUES (:dev, :metodo, :monto, :ref, :uid, :turno, NOW())",
                     [
                         'dev'    => $idDev,
                         'metodo' => $pg['metodo'],
                         'monto'  => $pg['monto'],
                         'ref'    => $pg['referencia'],
                         'uid'    => $idUsuario,
+                        'turno'  => $idTurno,
                     ]
                 );
             }
@@ -91,36 +106,45 @@ class Devolucion
             // Insertar detalle y revertir inventario
             foreach ($detalles as $det) {
                 $cantU = (int)($det['cantidad_unidad'] ?? 0);
+                $cantI = (int)($det['cantidad_intermedia'] ?? 0);
                 $cantF = (int)($det['cantidad_fraccion'] ?? 0);
-                if ($cantU <= 0 && $cantF <= 0) continue;
+                if ($cantU <= 0 && $cantI <= 0 && $cantF <= 0) continue;
+
+                $producto = $this->db->fetchOne(
+                    "SELECT unidad_cerrada, unidades_por_intermedio FROM vb_productos WHERE id_producto = :id",
+                    ['id' => $det['id_producto']]
+                );
+                $porCaja = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+                $porIntermedio = max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+                $internasDevueltas = ($cantU * $porCaja) + ($cantI * $porIntermedio) + $cantF;
 
                 $this->db->insert(
-                    "INSERT INTO vb_devoluciones_detalle (id_devolucion, id_producto, cantidad_unidad, cantidad_fraccion, valor_unitario, subtotal)
-                     VALUES (:dev, :prod, :cu, :cf, :vu, :sub)",
+                    "INSERT INTO vb_devoluciones_detalle (id_devolucion, id_producto, cantidad_unidad, cantidad_fraccion, cantidad_intermedia, valor_unitario, subtotal)
+                     VALUES (:dev, :prod, :cu, :cf, :ci, :vu, :sub)",
                     [
                         'dev'  => $idDev,
                         'prod' => $det['id_producto'],
                         'cu'   => $cantU,
                         'cf'   => $cantF,
+                        'ci'   => $cantI,
                         'vu'   => $det['valor_unitario'] ?? 0,
                         'sub'  => $det['subtotal'] ?? 0,
                     ]
                 );
 
-                // Revertir inventario
+                // Revertir inventario en unidades internas
                 $this->db->executeAffected(
-                    "UPDATE vb_inventario SET unidad = unidad + :u, fraccion = fraccion + :f WHERE id_producto = :id",
-                    ['u' => $cantU, 'f' => $cantF, 'id' => $det['id_producto']]
+                    "UPDATE vb_inventario SET unidad = unidad + :u WHERE id_producto = :id",
+                    ['u' => $internasDevueltas, 'id' => $det['id_producto']]
                 );
 
                 // Registrar movimiento
                 $this->db->insert(
                     "INSERT INTO vb_movimientos_inventario (id_producto, tipo, unidad, fraccion, observacion, id_usuario, created_at)
-                     VALUES (:id, 'DEVOLUCION', :u, :f, :obs, :uid, NOW())",
+                     VALUES (:id, 'DEVOLUCION', :u, 0, :obs, :uid, NOW())",
                     [
                         'id'  => $det['id_producto'],
-                        'u'   => $cantU,
-                        'f'   => $cantF,
+                        'u'   => $internasDevueltas,
                         'obs' => "Devolución #{$codigo} - {$motivo}",
                         'uid' => $idUsuario,
                     ]
@@ -130,13 +154,15 @@ class Devolucion
             // Verificar si TODOS los productos de la factura han sido devueltos en su totalidad
             $productosFactura = $this->db->select(
                 "SELECT df.id_producto, df.cantidad_unidad AS fact_u, df.cantidad_fraccion AS fact_f,
+                        df.cantidad_intermedia AS fact_i,
                         COALESCE(SUM(dd.cantidad_unidad), 0) AS dev_u,
-                        COALESCE(SUM(dd.cantidad_fraccion), 0) AS dev_f
+                        COALESCE(SUM(dd.cantidad_fraccion), 0) AS dev_f,
+                        COALESCE(SUM(dd.cantidad_intermedia), 0) AS dev_i
                  FROM vb_detalle_facturas df
                  LEFT JOIN vb_devoluciones_detalle dd ON df.id_producto = dd.id_producto
                     AND dd.id_devolucion IN (SELECT id_devolucion FROM vb_devoluciones WHERE id_factura = :fac)
                  WHERE df.id_factura = :fac2
-                 GROUP BY df.id_producto, df.cantidad_unidad, df.cantidad_fraccion",
+                 GROUP BY df.id_producto, df.cantidad_unidad, df.cantidad_fraccion, df.cantidad_intermedia",
                 ['fac' => $idFactura, 'fac2' => $idFactura]
             );
 
@@ -144,7 +170,8 @@ class Devolucion
             foreach ($productosFactura as $pf) {
                 $restaU = (int)$pf['fact_u'] - (int)$pf['dev_u'];
                 $restaF = (int)$pf['fact_f'] - (int)$pf['dev_f'];
-                if ($restaU > 0 || $restaF > 0) {
+                $restaI = (int)$pf['fact_i'] - (int)$pf['dev_i'];
+                if ($restaU > 0 || $restaF > 0 || $restaI > 0) {
                     $todosCompletos = false;
                     break;
                 }
@@ -176,7 +203,8 @@ class Devolucion
      * Aquí NO hay cambio: la suma debe dar exactamente el total devuelto,
      * porque lo que sale de caja es justo lo que se le entrega al cliente.
      *
-     * @return array ['pagos' => array, 'resumen' => string]
+     * @param array<string, mixed> $data
+     * @return array{pagos: list<array{metodo: string, monto: float, referencia: string|null}>, resumen: string}
      */
     private function procesarPagosDevolucion(array $data, float $total): array
     {
@@ -232,6 +260,7 @@ class Devolucion
     /**
      * Listar devoluciones con paginación
      */
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -275,6 +304,8 @@ class Devolucion
 
     /**
      * Obtener detalles de una devolución
+     *
+     * @return array<string, mixed>|null
      */
     public function obtenerConDetalle(int $id): ?array
     {
@@ -313,6 +344,8 @@ class Devolucion
     /**
      * Resumen de devoluciones por método en un rango de fechas.
      * Sirve para el cuadre de caja y para el cierre de inventario.
+     *
+     * @return list<array<string, mixed>>
      */
     public function resumenPorMetodo(string $desde, string $hasta): array
     {

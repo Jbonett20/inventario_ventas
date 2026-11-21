@@ -15,6 +15,7 @@ class PlanSepare
     /**
      * Listar planes separe paginados
      */
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25): array
     {
         $offset = ($page - 1) * $perPage;
@@ -43,6 +44,7 @@ class PlanSepare
      *            ...
      *        ]
      */
+    /** @param array<string, mixed> $d */
     public function crear(array $d, int $idUsuario): int
     {
         $codigo = 'SEP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
@@ -114,6 +116,7 @@ class PlanSepare
     /**
      * Obtener un plan separe por ID
      */
+    /** @return array<string, mixed>|null */
     public function obtenerPorId(int $id): ?array
     {
         return $this->db->fetchOne(
@@ -206,6 +209,7 @@ class PlanSepare
     /**
      * Obtener un plan separe con su detalle de productos
      */
+    /** @return array<string, mixed>|null */
     public function obtenerConDetalle(int $id): ?array
     {
         $plan = $this->obtenerPorId($id);
@@ -228,6 +232,7 @@ class PlanSepare
     /**
      * Obtener abonos de un plan separe
      */
+    /** @return list<array<string, mixed>> */
     public function abonos(int $idPlanSepare): array
     {
         return $this->db->select(

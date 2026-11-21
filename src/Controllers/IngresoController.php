@@ -228,7 +228,12 @@ class IngresoController
     {
         $filtro = (string)$r->get('filtro', 'TODAS');
         $buscar = trim((string)$r->get('buscar', ''));
-        Response::success($this->model->listarFacturas($filtro, $buscar));
+        $estadoPago = strtoupper(trim((string)$r->get('estado_pago', '')));
+        if (!in_array($estadoPago, ['', 'TODOS', 'PENDIENTE', 'PAGADA', 'EN MORA'], true)) {
+            Response::error('El estado de pago seleccionado no es válido', 422);
+            return;
+        }
+        Response::success($this->model->listarFacturas($filtro, $buscar, $estadoPago));
     }
 
     /**
@@ -323,6 +328,28 @@ class IngresoController
                 'inversion' => round($valorCompra, 2),
             ],
         ]);
+    }
+
+    public function pagarFactura(Request $r): void
+    {
+        $data = $r->json() ?: $r->all();
+        $idFactura = (int)($data['id_ingreso_factura'] ?? 0);
+        $monto = (float)($data['monto'] ?? 0);
+        $metodo = (string)($data['metodo'] ?? '');
+        $referencia = isset($data['referencia']) ? (string)$data['referencia'] : null;
+
+        try {
+            $resultado = $this->model->registrarPagoFacturaCompra(
+                $idFactura,
+                $monto,
+                $metodo,
+                $referencia,
+                $this->session->getUserId()
+            );
+            Response::success($resultado, 'Pago de factura registrado correctamente');
+        } catch (\Exception $e) {
+            Response::error('Error al registrar el pago: ' . $e->getMessage(), 422);
+        }
     }
 
     /**

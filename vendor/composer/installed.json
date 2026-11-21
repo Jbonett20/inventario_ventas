@@ -606,26 +606,27 @@
         },
         {
             "name": "psalm/phar",
-            "version": "5.26.1",
-            "version_normalized": "5.26.1.0",
+            "version": "6.20.12",
+            "version_normalized": "6.20.12.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/psalm/phar.git",
-                "reference": "8a38e7ad04499a0ccd2c506fd1da6fc01fff4547"
+                "reference": "3a3a7b4c599fddd57b53670e16d0ae5494f2d082"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/psalm/phar/zipball/8a38e7ad04499a0ccd2c506fd1da6fc01fff4547",
-                "reference": "8a38e7ad04499a0ccd2c506fd1da6fc01fff4547",
+                "url": "https://api.github.com/repos/psalm/phar/zipball/3a3a7b4c599fddd57b53670e16d0ae5494f2d082",
+                "reference": "3a3a7b4c599fddd57b53670e16d0ae5494f2d082",
                 "shasum": ""
             },
             "require": {
-                "php": "^7.1 || ^8.0"
+                "php": "^8.2"
             },
             "conflict": {
                 "vimeo/psalm": "*"
             },
-            "time": "2024-09-09T16:22:43+00:00",
+            "time": "2026-11-16T10:29:37+00:00",
+            "published-time": "2026-11-16T10:29:50+00:00",
             "bin": [
                 "psalm.phar"
             ],
@@ -638,7 +639,7 @@
             "description": "Composer-based Psalm Phar",
             "support": {
                 "issues": "https://github.com/psalm/phar/issues",
-                "source": "https://github.com/psalm/phar/tree/5.26.1"
+                "source": "https://github.com/psalm/phar/tree/6.20.12"
             },
             "install-path": "../psalm/phar"
         },

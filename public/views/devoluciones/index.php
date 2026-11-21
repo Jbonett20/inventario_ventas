@@ -119,7 +119,7 @@ function verDetalleDev(id) {
             '<table class="table table-sm"><thead><tr><th>#</th><th>Producto</th><th>Cant.</th><th>Valor Und.</th><th>Subtotal</th></tr></thead><tbody>';
         $.each(dev.detalles, function(i, det) {
             html += '<tr><td>' + (i+1) + '</td><td>' + escHtml(det.descripcion || 'Producto #' + det.id_producto) + '</td>' +
-                '<td>' + (det.cantidad_unidad||0) + '</td>' +
+                '<td>' + (det.cantidad_unidad||0) + (parseInt(det.cantidad_intermedia||0, 10) > 0 ? ' + ' + det.cantidad_intermedia : '') + (parseInt(det.cantidad_fraccion||0, 10) > 0 ? ' + ' + det.cantidad_fraccion + ' und' : '') + '</td>' +
                 '<td>$' + formatoNumero(det.valor_unitario) + '</td>' +
                 '<td class="fw-bold text-danger">$' + formatoNumero(det.subtotal) + '</td></tr>';
         });

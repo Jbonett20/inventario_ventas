@@ -80,6 +80,11 @@
                                                onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantIng()">
                                         <i class="fas fa-box me-1"></i>Caja
                                     </label>
+                                    <label class="btn btn-outline-primary btn-sm rounded-pill" id="lblTipoCajaUnd">
+                                        <input type="radio" name="tipo_cantidad" value="CAJA_UND" class="d-none"
+                                               onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantIng()">
+                                        <i class="fas fa-box-open me-1"></i>Cajas + Und
+                                    </label>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -168,6 +173,10 @@
                             <label class="form-label fw-semibold">Fecha</label>
                             <input type="date" class="form-control" id="fac_fecha" value="<?= date('Y-m-d') ?>">
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Fecha de vencimiento <small class="text-muted">(opcional)</small></label>
+                            <input type="date" class="form-control" id="fac_vencimiento">
+                        </div>
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-primary px-4" onclick="guardarFactura()">
                                 <i class="fas fa-save me-2"></i><span id="fac_btn_txt">Crear Factura</span>
@@ -188,6 +197,12 @@
                             <option value="PENDIENTES">Pendientes</option>
                             <option value="APLICADAS">En inventario</option>
                         </select>
+                        <select class="form-select form-select-sm" id="fac_filtro_pago" style="width:auto;" onchange="cargarFacturas()">
+                            <option value="">Todos los estados de pago</option>
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="PAGADA">Pagada</option>
+                            <option value="EN MORA">En mora</option>
+                        </select>
                         <input type="text" class="form-control form-control-sm" id="fac_buscar" placeholder="Buscar factura..." onkeyup="buscarFacturaDebounce()">
                     </div>
                 </div>
@@ -198,11 +213,12 @@
                                 <tr>
                                     <th>Factura</th><th>Proveedor</th><th>Fecha</th>
                                     <th class="text-center">Prod.</th><th class="text-center">Estado</th>
+                                    <th class="text-center">Pago</th><th>Vencimiento</th>
                                     <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="tbodyFac">
-                                <tr><td colspan="6" class="text-center text-muted py-4">Seleccione el proveedor y cree una factura para empezar</td></tr>
+                                <tr><td colspan="8" class="text-center text-muted py-4">Seleccione el proveedor y cree una factura para empezar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -217,6 +233,7 @@
             <div>
                 <h6 class="fw-bold mb-0"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Factura: <span id="det_fac_nombre"></span>
                     <span class="badge bg-secondary ms-2" id="det_fac_estado"></span>
+                    <span class="badge bg-secondary ms-1" id="det_fac_estado_pago"></span>
                 </h6>
                 <small class="text-muted" id="det_fac_info"></small>
             </div>
@@ -293,6 +310,39 @@
                                 </tr>
                             </tfoot>
                         </table>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="border-top mt-4 pt-3" id="boxPagoFactura">
+                        <h6 class="fw-bold mb-2"><i class="fas fa-hand-holding-usd text-success me-2"></i>Pagos de la factura</h6>
+                        <p class="small text-muted mb-3" id="fac_saldo_info"></p>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Método</label>
+                                <select class="form-select form-select-sm" id="fac_pago_metodo">
+                                    <option>EFECTIVO</option>
+                                    <option>NEQUI</option>
+                                    <option>DAVIPLATA</option>
+                                    <option>ADDI</option>
+                                    <option>TRANSFERENCIA</option>
+                                    <option>OTROS</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Valor del pago</label>
+                                <input type="number" class="form-control form-control-sm" id="fac_pago_monto" min="0.01" step="0.01">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Referencia <small class="text-muted">(opcional)</small></label>
+                                <input type="text" class="form-control form-control-sm" id="fac_pago_referencia" maxlength="100">
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                <button class="btn btn-success btn-sm" type="button" id="btnRegistrarPagoFactura" onclick="registrarPagoFacturaCompra()">
+                                    <i class="fas fa-check me-1"></i>Registrar pago
+                                </button>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">Los pagos en efectivo se descuentan del turno abierto; los demás métodos no afectan el efectivo físico.</small>
                     </div>
                 </div>
             </div>
@@ -557,24 +607,32 @@ var undPorCajaActual = 1;
 
 function cambiarTipoCantIng() {
     var tipo = $('input[name="tipo_cantidad"]:checked').val();
-    if (tipo === 'CAJA') {
-        $('#lblCantUnd').text('Cantidad Cajas');
+    if (tipo === 'CAJA' || tipo === 'CAJA_UND') {
+        $('#lblCantUnd').text(tipo === 'CAJA' ? 'Cantidad Cajas' : 'Cajas');
+        $('#ing_cant_frac').prop('disabled', tipo === 'CAJA').val(0);
         $('#ing_info_conversion').show();
         actualizarInfoConversion();
     } else {
         $('#lblCantUnd').text('Cantidad Unidades');
+        $('#ing_cant_frac').prop('disabled', false);
         $('#ing_info_conversion').hide();
     }
 }
 
 function actualizarInfoConversion() {
     var cajas = parseInt($('#ing_cant_und').val()) || 0;
+    var sueltas = parseInt($('#ing_cant_frac').val()) || 0;
     var total = cajas * undPorCajaActual;
-    $('#ing_info_conversion').text(cajas + ' caja(s) × ' + undPorCajaActual + ' und/caja = ' + total + ' unidades');
+    var texto = cajas + ' caja(s) × ' + undPorCajaActual + ' und/caja = ' + total + ' unidades';
+    if (sueltas > 0) {
+        texto += ' + ' + sueltas + ' und suelta(s) = ' + (total + sueltas) + ' unidades';
+    }
+    $('#ing_info_conversion').text(texto);
 }
 
-$('#ing_cant_und').on('keyup change', function() {
-    if ($('input[name="tipo_cantidad"]:checked').val() === 'CAJA') {
+$('#ing_cant_und, #ing_cant_frac').on('keyup change', function() {
+    var tipo = $('input[name="tipo_cantidad"]:checked').val();
+    if (tipo === 'CAJA' || tipo === 'CAJA_UND') {
         actualizarInfoConversion();
     }
 });
@@ -812,22 +870,28 @@ var timerFacBusq;
 
 function cargarFacturas() {
     var filtro = $('#fac_filtro').val() || 'TODAS';
+    var estadoPago = $('#fac_filtro_pago').val() || '';
     var buscar = $('#fac_buscar').val() || '';
-    $.getJSON(BASE_URL + '/ingresos/facturas', { filtro: filtro, buscar: buscar }, function(r) {
+    $.getJSON(BASE_URL + '/ingresos/facturas', { filtro: filtro, estado_pago: estadoPago, buscar: buscar }, function(r) {
         if (!r.success) return;
         var html = '';
         if (!r.data.length) {
-            html = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas registradas</td></tr>';
+            html = '<tr><td colspan="8" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay facturas registradas</td></tr>';
         } else {
             $.each(r.data, function(i, f) {
                 var aplicada = parseInt(f.estado) === 1;
                 var activa = facActual && parseInt(facActual.id_ingreso_factura) === parseInt(f.id_ingreso_factura);
+                var estadoPago = f.estado_pago || 'PENDIENTE';
+                var claseEstadoPago = estadoPago === 'PAGADA' ? 'bg-success'
+                    : (estadoPago === 'EN MORA' ? 'bg-danger' : 'bg-warning text-dark');
                 html += '<tr class="' + (activa ? 'table-active' : '') + '">' +
                     '<td><a href="#" onclick="seleccionarFactura(' + f.id_ingreso_factura + ');return false;"><strong>' + escHtml(f.nombre_factura) + '</strong></a></td>' +
                     '<td><small>' + escHtml(f.proveedor_nombre || '-') + '</small></td>' +
                     '<td><small>' + f.fecha + '</small></td>' +
                     '<td class="text-center">' + (f.total_productos || 0) + '</td>' +
                     '<td class="text-center"><span class="badge ' + (aplicada ? 'bg-success' : 'bg-warning text-dark') + '">' + (aplicada ? 'En inventario' : 'Pendiente') + '</span></td>' +
+                    '<td class="text-center"><span class="badge ' + claseEstadoPago + '">' + estadoPago + '</span></td>' +
+                    '<td><small>' + (f.fecha_vencimiento || '-') + '</small></td>' +
                     '<td class="text-center text-nowrap">' +
                         '<button class="btn btn-sm btn-outline-primary me-1" onclick="seleccionarFactura(' + f.id_ingreso_factura + ')" title="Abrir"><i class="fas fa-folder-open"></i></button>' +
                         '<button class="btn btn-sm btn-outline-danger" onclick="borrarFactura(' + f.id_ingreso_factura + ')" title="Eliminar"><i class="fas fa-trash"></i></button>' +
@@ -848,6 +912,7 @@ function nuevaFactura() {
     $('#fac_nombre').val('');
     $('#fac_proveedor').val('');
     $('#fac_fecha').val(new Date().toISOString().slice(0, 10));
+    $('#fac_vencimiento').val('');
     $('#fac_btn_txt').text('Crear Factura');
     $('#cardDetalleFac').addClass('d-none');
     facActual = null;
@@ -862,7 +927,8 @@ function guardarFactura() {
     var data = {
         nombre_factura: nombre,
         id_proveedor: $('#fac_proveedor').val() || null,
-        fecha: $('#fac_fecha').val()
+        fecha: $('#fac_fecha').val(),
+        fecha_vencimiento: $('#fac_vencimiento').val() || null
     };
     var url = BASE_URL + '/ingresos/factura/crear';
     if (id > 0) { data.id_ingreso_factura = id; url = BASE_URL + '/ingresos/factura/actualizar'; }
@@ -897,6 +963,23 @@ function seleccionarFactura(id) {
             .text(aplicada ? 'En inventario' : 'Pendiente')
             .removeClass('bg-success bg-warning bg-secondary bg-warning text-dark')
             .addClass(aplicada ? 'bg-success' : 'bg-warning text-dark');
+        var estadoPago = facActual.estado_pago || 'PENDIENTE';
+        var claseEstadoPago = estadoPago === 'PAGADA' ? 'bg-success' : (estadoPago === 'EN MORA' ? 'bg-danger' : 'bg-warning text-dark');
+        $('#det_fac_estado_pago').text('Pago: ' + estadoPago)
+            .removeClass('bg-success bg-danger bg-warning bg-secondary text-dark')
+            .addClass(claseEstadoPago);
+        var saldoPendiente = parseFloat(facActual.saldo_pendiente) || 0;
+        var totalFactura = parseFloat(facActual.total_factura) || 0;
+        var totalPagadoFactura = parseFloat(facActual.total_pagado) || 0;
+        $('#fac_saldo_info').text(
+            'Total: $' + formatoNumero(totalFactura) +
+            ' | Pagado: $' + formatoNumero(totalPagadoFactura) +
+            ' | Saldo: $' + formatoNumero(saldoPendiente) +
+            ' | Vence: ' + (facActual.fecha_vencimiento || 'Sin fecha')
+        );
+        $('#boxPagoFactura').toggleClass('d-none', totalFactura <= 0.01 || saldoPendiente <= 0.01);
+        $('#fac_pago_monto').attr('max', saldoPendiente);
+        $('#btnRegistrarPagoFactura').prop('disabled', totalFactura <= 0.01 || saldoPendiente <= 0.01);
 
         $('#btnPasarInv').toggleClass('d-none', aplicada);
         $('#btnRevertirFac').toggleClass('d-none', !aplicada);
@@ -906,10 +989,41 @@ function seleccionarFactura(id) {
         $('#fac_nombre').val(facActual.nombre_factura);
         $('#fac_proveedor').val(facActual.id_proveedor || '');
         $('#fac_fecha').val(facActual.fecha);
+        $('#fac_vencimiento').val(facActual.fecha_vencimiento || '');
         $('#fac_btn_txt').text('Actualizar Factura');
 
         pintarDetalleFac();
         cargarFacturas();
+    });
+}
+
+function registrarPagoFacturaCompra() {
+    if (!facActual) { PNotify.error({ text: 'Selecciona una factura de compra.' }); return; }
+    var idFactura = parseInt(facActual.id_ingreso_factura, 10);
+    var monto = parseFloat($('#fac_pago_monto').val()) || 0;
+    var saldo = parseFloat(facActual.saldo_pendiente) || 0;
+    if (monto <= 0) { PNotify.error({ text: 'Ingresa un valor de pago mayor que cero.' }); return; }
+    if (monto > saldo + 0.009) { PNotify.error({ text: 'El pago supera el saldo pendiente de $' + formatoNumero(saldo) + '.' }); return; }
+
+    $.ajax({
+        url: BASE_URL + '/ingresos/factura/pagar',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            id_ingreso_factura: idFactura,
+            monto: monto,
+            metodo: $('#fac_pago_metodo').val(),
+            referencia: $('#fac_pago_referencia').val()
+        }),
+        success: function(r) {
+            if (!r.success) { PNotify.error({ text: r.message }); return; }
+            PNotify.success({ text: r.message });
+            $('#fac_pago_monto, #fac_pago_referencia').val('');
+            seleccionarFactura(idFactura);
+        },
+        error: function(xhr) {
+            PNotify.error({ text: (xhr.responseJSON && xhr.responseJSON.message) || 'Error al registrar el pago.' });
+        }
     });
 }
 

@@ -191,6 +191,7 @@ $router->get('/ingresos/facturas',            'IngresoController@facturas', ['SI
 $router->get('/ingresos/factura/detalle',     'IngresoController@detalleFactura', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/factura/crear',      'IngresoController@crearFactura', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/factura/actualizar', 'IngresoController@actualizarFactura', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/ingresos/factura/pagar',      'IngresoController@pagarFactura', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/factura/agregar',    'IngresoController@agregarProductoFactura', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/factura/quitar',     'IngresoController@quitarProductoFactura', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/ingresos/factura/pasar',      'IngresoController@pasarFactura', ['SIG\Middleware\AuthMiddleware']);
@@ -218,6 +219,14 @@ $router->get('/facturacion/pdf/{id}', 'FacturaController@pdf', ['SIG\Middleware\
 $router->post('/facturacion/anular',  'FacturaController@anular', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/facturacion/base-diaria/guardar', 'FacturaController@guardarBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/facturacion/base-diaria/obtener', 'FacturaController@obtenerBaseDiaria', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/facturacion/turno/abrir', 'TurnoCajaController@abrir', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/facturacion/turno/resumen', 'TurnoCajaController@resumenActual', ['SIG\Middleware\AuthMiddleware']);
+$router->post('/facturacion/turno/cerrar', 'TurnoCajaController@cerrar', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/facturacion/turno/{id}/imprimir', 'TurnoCajaController@imprimir', ['SIG\Middleware\AuthMiddleware']);
+
+// ---- Reporte de turnos de caja ----
+$router->get('/turnos/reportes', 'TurnoCajaController@reportes', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/turnos/reportes/datos', 'TurnoCajaController@reporte', ['SIG\Middleware\AuthMiddleware']);
 
 // ---- Facturación Electrónica (API DIAN) ----
 
@@ -247,6 +256,8 @@ $router->get('/reportes/ventas',      'ReporteController@ventas', ['SIG\Middlewa
 $router->get('/reportes/top-productos','ReporteController@topProductos', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/reportes/metodos-pago','ReporteController@metodosPago', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/reportes/ventas-diarias','ReporteController@ventasDiarias', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/reportes/ventas-por-cajero','ReporteController@ventasPorCajero', ['SIG\Middleware\AuthMiddleware']);
+$router->get('/reportes/ventas-por-cajero/imprimir','ReporteController@imprimirVentasPorCajero', ['SIG\Middleware\AuthMiddleware']);
 $router->get('/configuracion',        'ConfiguracionController@index', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/configuracion/empresa/guardar', 'ConfiguracionController@guardarEmpresa', ['SIG\Middleware\AuthMiddleware']);
 $router->post('/configuracion/fe/guardar', 'ConfiguracionController@guardarFE', ['SIG\Middleware\AuthMiddleware']);

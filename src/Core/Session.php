@@ -10,6 +10,7 @@ namespace SIG\Core;
 class Session
 {
     private static ?Session $instance = null;
+    /** @var array<string, mixed> */
     private array $config;
     private bool $started = false;
 
@@ -135,8 +136,13 @@ class Session
     /**
      * Obtener mensajes flash y eliminarlos
      */
-    public function flash(string $type): ?string
+    public function flash(string $type, ?string $message = null): ?string
     {
+        if ($message !== null) {
+            $_SESSION['flash'][$type] = $message;
+            return null;
+        }
+
         $message = $_SESSION['flash'][$type] ?? null;
         unset($_SESSION['flash'][$type]);
         return $message;
@@ -152,6 +158,8 @@ class Session
 
     /**
      * Obtener todos los mensajes flash
+     *
+     * @return array<string, mixed>
      */
     public function getAllFlash(): array
     {

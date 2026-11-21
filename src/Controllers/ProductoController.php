@@ -206,6 +206,9 @@ class ProductoController
 
     /**
      * Validar datos del producto
+     *
+     * @param array<string, mixed> $data
+     * @return list<string>
      */
     private function validar(array $data): array
     {

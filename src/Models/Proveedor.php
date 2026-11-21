@@ -8,6 +8,7 @@ class Proveedor
     private Database $db;
     public function __construct() { $this->db = Database::getInstance(); }
 
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -24,6 +25,7 @@ class Proveedor
         return ['data' => $data, 'total' => (int)($total['total'] ?? 0), 'page' => $page, 'totalPages' => ceil(($total['total'] ?? 0) / $perPage)];
     }
 
+    /** @param array<string, mixed> $d */
     public function crear(array $d): int
     {
         return $this->db->insert(

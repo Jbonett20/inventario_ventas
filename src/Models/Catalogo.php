@@ -48,13 +48,17 @@ class Catalogo
         $this->db = Database::getInstance();
     }
 
-    /** Tipos válidos de catálogo */
+    /** @return list<string> */
     public static function tipos(): array
     {
         return array_keys(self::TIPOS);
     }
 
-    /** Devuelve la configuración de un tipo o lanza excepción */
+    /**
+     * Devuelve la configuración de un tipo o lanza excepción.
+     *
+     * @return array<string, mixed>
+     */
     private function config(string $tipo): array
     {
         if (!isset(self::TIPOS[$tipo])) {
@@ -65,6 +69,8 @@ class Catalogo
 
     /**
      * Listar los registros de un catálogo, incluyendo cuántos productos lo usan
+     *
+     * @return list<array<string, mixed>>
      */
     public function listar(string $tipo): array
     {
@@ -85,6 +91,8 @@ class Catalogo
 
     /**
      * Crear o actualizar un registro del catálogo
+     *
+     * @param array<string, mixed> $data
      */
     public function guardar(string $tipo, array $data): int
     {
@@ -173,6 +181,8 @@ class Catalogo
      * Eliminar un registro del catálogo.
      * Las FK de vb_productos son ON DELETE SET NULL, por eso se avisa
      * cuántos productos quedarán sin este dato.
+     *
+     * @return array{nombre: mixed, productos_afectados: int}
      */
     public function eliminar(string $tipo, int $id): array
     {

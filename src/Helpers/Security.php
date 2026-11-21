@@ -165,8 +165,9 @@ class Security
     {
         $headers = ['HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP', 'REMOTE_ADDR'];
         foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                $ips = explode(',', $_SERVER[$header]);
+            $value = $_SERVER[$header] ?? null;
+            if (is_string($value) && $value !== '') {
+                $ips = explode(',', $value);
                 return trim($ips[0]);
             }
         }

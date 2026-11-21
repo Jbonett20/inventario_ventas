@@ -12,6 +12,7 @@ class Inventario
     /**
      * Listar inventario con datos de productos
      */
+    /** @return array<string, mixed> */
     public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
     {
         $offset = ($page - 1) * $perPage;
@@ -67,6 +68,7 @@ class Inventario
     /**
      * Ajustar inventario
      */
+    /** @return array<string, mixed> */
     public function ajustar(int $idProducto, int $unidad, int $fraccion, string $observacion, int $idUsuario): array
     {
         // Obtener inventario actual
@@ -116,6 +118,7 @@ class Inventario
     /**
      * Obtener resumen del inventario (totales)
      */
+    /** @return array<string, mixed> */
     public function resumen(): array
     {
         $data = $this->db->fetchOne(
@@ -136,6 +139,7 @@ class Inventario
     /**
      * Productos con stock bajo (con sugerencia de reorden)
      */
+    /** @return list<array<string, mixed>> */
     public function stockBajo(): array
     {
         $data = $this->db->select(
@@ -164,6 +168,7 @@ class Inventario
     /**
      * Sugerencias de reorden para todos los productos (para vista de inventario)
      */
+    /** @return list<array<string, mixed>> */
     public function sugerenciasReorden(): array
     {
         return $this->db->select(
@@ -182,6 +187,7 @@ class Inventario
     /**
      * Historial de movimientos de un producto
      */
+    /** @return list<array<string, mixed>> */
     public function movimientos(int $idProducto, int $limit = 20): array
     {
         return $this->db->select(
@@ -200,6 +206,8 @@ class Inventario
      *
      * @param string $tipo TODOS | INGRESO | EGRESO | AJUSTE | DEVOLUCION
      */
+    /** @return list<array<string, mixed>> */
+    /** @return array{data: list<array<string, mixed>>, desde: string, hasta: string, totales: array<string, mixed>} */
     public function movimientosPorFecha(string $desde, string $hasta, string $tipo = 'TODOS', int $idProducto = 0): array
     {
         $where  = ['DATE(m.created_at) BETWEEN :desde AND :hasta'];

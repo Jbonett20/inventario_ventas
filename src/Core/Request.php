@@ -9,10 +9,15 @@ namespace SIG\Core;
  */
 class Request
 {
+    /** @var array<string, string> */
     private array $params    = [];
+    /** @var array<string, mixed> */
     private array $query     = [];
+    /** @var array<string, mixed> */
     private array $body      = [];
+    /** @var array<string, array<string, mixed>> */
     private array $files     = [];
+    /** @var array<string, mixed> */
     private array $server    = [];
     private ?string $rawBody = null;
     private string $basePath = '';
@@ -72,7 +77,7 @@ class Request
     /**
      * Obtener un valor GET sanitizado
      */
-    public function get(string $key, $default = null): mixed
+    public function get(string $key, mixed $default = null): mixed
     {
         return $this->query[$key] ?? $default;
     }
@@ -80,13 +85,15 @@ class Request
     /**
      * Obtener un valor POST sanitizado
      */
-    public function post(string $key, $default = null): mixed
+    public function post(string $key, mixed $default = null): mixed
     {
         return $this->body[$key] ?? $default;
     }
 
     /**
      * Obtener todo el body POST
+     *
+     * @return array<string, mixed>
      */
     public function all(): array
     {
@@ -95,6 +102,8 @@ class Request
 
     /**
      * Obtener el body JSON (para API requests)
+     *
+     * @return array<string, mixed>|null
      */
     public function json(): ?array
     {
@@ -117,6 +126,8 @@ class Request
 
     /**
      * Establecer parámetros de ruta (usado por el Router)
+     *
+     * @param array<string, string> $params
      */
     public function setParams(array $params): void
     {
@@ -126,13 +137,15 @@ class Request
     /**
      * Obtener un parámetro de ruta
      */
-    public function param(string $key, $default = null): mixed
+    public function param(string $key, mixed $default = null): mixed
     {
         return $this->params[$key] ?? $default;
     }
 
     /**
      * Obtener un archivo subido
+     *
+     * @return array<string, mixed>|null
      */
     public function file(string $key): ?array
     {
@@ -218,6 +231,9 @@ class Request
 
     /**
      * Sanitizar un array completo
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
      */
     private function sanitizeArray(array $data): array
     {

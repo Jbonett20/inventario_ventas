@@ -13,6 +13,7 @@ use SIG\Core\Database;
 class FacturacionElectronicaService
 {
     private Database $db;
+    /** @var array<string, mixed> */
     private array $config;
 
     public function __construct()
@@ -24,6 +25,7 @@ class FacturacionElectronicaService
     /**
      * Cargar configuración de FE desde la BD
      */
+    /** @return array<string, mixed> */
     private function cargarConfiguracion(): array
     {
         $rows = $this->db->select(
@@ -57,6 +59,7 @@ class FacturacionElectronicaService
     /**
      * Probar conexión con la API
      */
+    /** @return array<string, mixed> */
     public function testConexion(): array
     {
         $url = $this->config['url_api'];
@@ -87,6 +90,7 @@ class FacturacionElectronicaService
     /**
      * Sincronizar un producto con Factin
      */
+    /** @return array<string, mixed> */
     public function sincronizarProducto(int $idProducto): array
     {
         $producto = $this->db->fetchOne(
@@ -139,6 +143,7 @@ class FacturacionElectronicaService
     /**
      * Enviar factura electrónica a la DIAN vía Factin
      */
+    /** @return array<string, mixed> */
     public function enviarFactura(int $idFactura): array
     {
         $factura = $this->db->fetchOne(
@@ -295,6 +300,7 @@ class FacturacionElectronicaService
     /**
      * Guardar/actualizar configuración de FE
      */
+    /** @param array<string, mixed> $data */
     public function guardarConfiguracion(array $data): void
     {
         foreach ($data as $clave => $valor) {
@@ -324,6 +330,7 @@ class FacturacionElectronicaService
     /**
      * Obtener configuración actual
      */
+    /** @return array<string, mixed> */
     public function getConfiguracion(): array
     {
         return $this->config;

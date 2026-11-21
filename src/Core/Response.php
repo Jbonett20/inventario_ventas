@@ -9,11 +9,10 @@ namespace SIG\Core;
  */
 class Response
 {
-    private array $headers = [];
-    private int $statusCode = 200;
-
     /**
      * Enviar respuesta JSON
+     *
+     * @param array<string, string> $headers
      */
     public static function json(mixed $data, int $status = 200, array $headers = []): void
     {
@@ -92,6 +91,8 @@ class Response
 
     /**
      * Renderizar una vista
+     *
+     * @param array<string, mixed> $data
      */
     public static function view(string $view, array $data = [], string $layout = 'main'): void
     {
@@ -138,21 +139,4 @@ class Response
         }
     }
 
-    /**
-     * Establecer un código de estado HTTP
-     */
-    public function setStatusCode(int $code): self
-    {
-        $this->statusCode = $code;
-        return $this;
-    }
-
-    /**
-     * Establecer una cabecera
-     */
-    public function setHeader(string $key, string $value): self
-    {
-        $this->headers[$key] = $value;
-        return $this;
-    }
 }

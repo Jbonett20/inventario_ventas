@@ -503,6 +503,12 @@
                     <span class="nav-text">Reportes</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="<?= $basePath ?>/turnos/reportes" class="nav-link">
+                    <i class="fas fa-cash-register"></i>
+                    <span class="nav-text">Reporte de Turnos</span>
+                </a>
+            </li>
             <?php endif; ?>
 
             <li class="nav-section-title">ADMINISTRACIÓN</li>
