@@ -203,8 +203,8 @@
                         <div class="col-12"><hr class="my-1"></div>
 
                         <!-- Tipo de venta -->
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Tipo de Venta
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Forma de Venta
                                 <a href="#" class="text-primary ms-1" data-bs-toggle="modal" data-bs-target="#modalAyudaProducto" title="Ver ayuda de formas de venta">
                                     <i class="fas fa-circle-question"></i>
                                 </a>
@@ -212,8 +212,11 @@
                             <select class="form-select" name="tipo_venta" id="p_tipo_venta" onchange="toggleTipoVenta()">
                                 <option value="UNIDAD">Unidad (entera)</option>
                                 <option value="CAJA">Caja completa</option>
+                                <option value="CAJA_UNIDAD">Caja + Unidad</option>
+                                <option value="CAJA_INTERMEDIO">Caja + Intermedio + Unidad</option>
                                 <option value="FRACCION_DECIMAL">Fracción decimal</option>
                             </select>
+                            <small class="text-muted" id="p_tipo_venta_ayuda">Se vende por unidades sueltas</small>
                         </div>
                         <div class="col-md-3" id="div_unidad_medida" style="display:none;">
                             <label class="form-label fw-semibold">Unidad de Medida <i class="fas fa-question-circle text-muted" title="Ej: METRO, LITRO, KILO, VARILLA, BOTELLA, LIBRA"></i></label>
@@ -239,41 +242,29 @@
                             <small class="text-muted">1 unidad = esta cantidad</small>
                         </div>
 
-                        <!-- Unidad cerrada / Fracción (para UNIDAD y CAJA) -->
-                        <div class="col-md-3" id="div_unidad_cerrada">
-                            <label class="form-label fw-semibold">Unidades internas por caja <i class="fas fa-question-circle text-muted" title="¿Cuántas unidades vendibles trae una caja cerrada? Ej: 10 si una caja trae 10 sobres que también se venden sueltos. Use 1 si el producto no se vende por caja."></i></label>
+                        <!-- Unidad cerrada (solo formas con caja) -->
+                        <input type="hidden" name="fraccion" id="p_fraccion" value="0">
+                        <div class="col-md-3" id="div_unidad_cerrada" style="display:none;">
+                            <label class="form-label fw-semibold">Unidades por caja <i class="fas fa-question-circle text-muted" title="¿Cuántas unidades internas trae una caja cerrada? Ej: 24 si una caja trae 24 latas."></i></label>
                             <input type="number" class="form-control" name="unidad_cerrada" id="p_unidad_cerrada" value="1" min="1" onchange="actualizarAyudaEquivalencia()">
-                            <small class="text-muted" id="p_unidad_cerrada_ayuda">1 = se vende solo por unidad, sin caja</small>
-                        </div>
-                        <div class="col-md-3" id="div_fraccion">
-                            <label class="form-label fw-semibold">Unidades internas sueltas <i class="fas fa-question-circle text-muted" title="Active esta opción si la caja se puede abrir y vender sus unidades internas sueltas. Ej: caja de 10 sobres y se vende 1 sobre."></i></label>
-                            <select class="form-select" name="fraccion" id="p_fraccion">
-                                <option value="0">No se venden sueltas</option>
-                                <option value="1">Sí, se venden unidades internas sueltas</option>
-                            </select>
-                            <small class="text-muted">Permite vender un sobre de la caja</small>
+                            <small class="text-muted" id="p_unidad_cerrada_ayuda">1 caja = N unidades internas</small>
                         </div>
 
-                        <!-- Nivel intermedio opcional: caja -> sobre -> pastilla -->
-                        <div class="col-12">
-                            <div class="border rounded p-3 bg-light" id="div_nivel_intermedio">
-                                <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" id="p_tiene_intermedio" onchange="toggleNivelIntermedio()">
-                                    <label class="form-check-label fw-semibold" for="p_tiene_intermedio">
-                                        Tiene nivel intermedio (ej: caja &rarr; sobre &rarr; pastilla)
-                                    </label>
-                                </div>
-                                <div class="row g-2" id="campos_nivel_intermedio" style="display:none;">
+                        <!-- Nivel intermedio (solo Caja + Intermedio + Unidad) -->
+                        <div class="col-12" id="div_nivel_intermedio" style="display:none;">
+                            <div class="border rounded p-3 bg-light">
+                                <h6 class="fw-bold mb-2"><i class="fas fa-layer-group text-primary me-2"></i>Nivel intermedio</h6>
+                                <div class="row g-2">
                                     <div class="col-md-3">
                                         <label class="form-label fw-semibold small">Nombre del nivel intermedio</label>
                                         <input type="text" class="form-control" name="nombre_intermedio" id="p_nombre_intermedio" placeholder="Sobre" maxlength="30" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label fw-semibold small">Niveles intermedios por caja</label>
+                                        <label class="form-label fw-semibold small" id="p_unidades_intermedias_label">Niveles intermedios por caja</label>
                                         <input type="number" class="form-control" name="unidades_intermedias" id="p_unidades_intermedias" min="0" value="0" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label fw-semibold small">Unidades mínimas por nivel</label>
+                                        <label class="form-label fw-semibold small" id="p_unidades_por_intermedio_label">Unidades mínimas por nivel</label>
                                         <input type="number" class="form-control" name="unidades_por_intermedio" id="p_unidades_por_intermedio" min="0" value="1" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
@@ -293,11 +284,12 @@
 
                         <!-- Precios -->
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Precio Compra</label>
+                            <label class="form-label fw-semibold" id="p_compra_label">Precio Compra</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
                                 <input type="number" class="form-control" name="valor_compra" id="p_compra" step="0.01" min="0" onchange="calcularRentabilidad()">
                             </div>
+                            <small class="text-muted" id="p_compra_ayuda">Costo de una unidad</small>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold" id="p_venta_label">Precio Venta</label>
@@ -305,16 +297,17 @@
                                 <span class="input-group-text">$</span>
                                 <input type="number" class="form-control" name="valor_venta" id="p_venta" step="0.01" min="0" onchange="calcularRentabilidad()">
                             </div>
+                            <small class="text-muted" id="p_venta_ayuda"></small>
                         </div>
 
                         <!-- Precio unidad interna / Stock mínimo -->
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold" id="p_valor_unidad_label">Precio Unidad Interna <i class="fas fa-question-circle text-muted" title="Precio de una unidad interna suelta. Ej: si la caja trae 10 sobres, este es el precio de un solo sobre."></i></label>
+                        <div class="col-md-3" id="div_valor_unidad" style="display:none;">
+                            <label class="form-label fw-semibold" id="p_valor_unidad_label">Precio Unidad Interna <i class="fas fa-question-circle text-muted" title="Precio de una unidad interna suelta. Ej: si la caja trae 24 latas, este es el precio de una lata."></i></label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
                                 <input type="number" class="form-control" name="valor_unidad" id="p_valor_unidad" step="0.01" min="0">
                             </div>
-                            <small class="text-muted d-none" id="p_valor_unidad_ayuda">Obligatorio si se venden unidades internas sueltas</small>
+                            <small class="text-muted" id="p_valor_unidad_ayuda">Precio de una unidad suelta</small>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Stock Mínimo</label>
@@ -442,8 +435,16 @@ let currentPage = 1;
 function calcularRentabilidad() {
     var compra = parseFloat($('#p_compra').val()) || 0;
     var venta = parseFloat($('#p_venta').val()) || 0;
+    // El costo es por unidad interna y el precio de venta es por caja:
+    // el costo de la caja se obtiene multiplicando por las unidades que trae.
+    var porCaja = parseInt($('#p_unidad_cerrada').val(), 10) || 1;
+    var tipo = $('#p_tipo_venta').val();
+    var costoVenta = compra;
+    if (tipo !== 'FRACCION_DECIMAL' && porCaja > 1) {
+        costoVenta = compra * porCaja;
+    }
     if (compra > 0 && venta > 0) {
-        var rent = ((venta - compra) / venta) * 100;
+        var rent = ((venta - costoVenta) / venta) * 100;
         $('#p_rentabilidad').val(rent.toFixed(2));
     } else {
         $('#p_rentabilidad').val('');
@@ -452,53 +453,107 @@ function calcularRentabilidad() {
 
 function toggleTipoVenta() {
     var tipo = $('#p_tipo_venta').val();
-    if (tipo === 'FRACCION_DECIMAL') {
-        $('#div_unidad_medida').show();
-        $('#div_cantidad_por_unidad').show();
-        $('#div_unidad_cerrada').hide();
-        $('#div_fraccion').hide();
-        $('#div_nivel_intermedio').hide();
-        $('#p_valor_unidad').closest('.col-md-3').hide();
-        $('#p_venta_label').text('Precio Venta (' + ($('#p_unidad_medida').val() || 'medida') + ')');
-        actualizarPreviewPresentacion();
-    } else {
-        $('#div_unidad_medida').hide();
-        $('#div_cantidad_por_unidad').hide();
-        $('#div_unidad_cerrada').show();
-        $('#div_fraccion').show();
-        $('#div_nivel_intermedio').show();
-        $('#p_valor_unidad').closest('.col-md-3').show();
-        $('#p_venta_label').text(tipo === 'CAJA' ? 'Precio Venta (caja cerrada)' : 'Precio Venta (unidad)');
-        actualizarAyudaEquivalencia();
-    }
-}
+    var conCaja = (tipo === 'CAJA' || tipo === 'CAJA_UNIDAD' || tipo === 'CAJA_INTERMEDIO');
+    var conIntermedio = (tipo === 'CAJA_INTERMEDIO');
+    var permiteSueltas = (tipo === 'CAJA_UNIDAD' || tipo === 'CAJA_INTERMEDIO' || tipo === 'UNIDAD');
 
-function toggleNivelIntermedio() {
-    var activo = $('#p_tiene_intermedio').is(':checked');
-    $('#campos_nivel_intermedio').toggle(activo);
-    if (activo) {
+    // Campos que solo aplican a fracción decimal
+    $('#div_unidad_medida').toggle(tipo === 'FRACCION_DECIMAL');
+    $('#div_cantidad_por_unidad').toggle(tipo === 'FRACCION_DECIMAL');
+
+    // Caja y nivel intermedio
+    $('#div_unidad_cerrada').toggle(conCaja);
+    $('#div_nivel_intermedio').toggle(conIntermedio);
+    $('#div_valor_unidad').toggle(permiteSueltas && tipo !== 'FRACCION_DECIMAL');
+
+    // `fraccion` ya no se pregunta: se deduce de la forma de venta
+    $('#p_fraccion').val(permiteSueltas && tipo !== 'FRACCION_DECIMAL' ? 1 : 0);
+
+    // Etiquetas según la forma de venta
+    var ayuda = {
+        'UNIDAD': 'Se vende por unidades sueltas',
+        'CAJA': 'Solo se vende la caja completa',
+        'CAJA_UNIDAD': 'Se vende la caja completa o sus unidades sueltas',
+        'CAJA_INTERMEDIO': 'Caja → nivel intermedio → unidad mínima',
+        'FRACCION_DECIMAL': 'Se vende por fracción (litros, kilos, metros...)'
+    };
+    $('#p_tipo_venta_ayuda').text(ayuda[tipo] || '');
+
+    if (tipo === 'FRACCION_DECIMAL') {
+        $('#p_venta_label').text('Precio Venta (' + ($('#p_unidad_medida').val() || 'medida') + ')');
+        $('#p_compra_label').text('Precio Compra (' + ($('#p_unidad_medida').val() || 'medida') + ')');
+        $('#p_compra_ayuda').text('');
+        $('#p_venta_ayuda').text('');
+        actualizarPreviewPresentacion();
+    } else if (tipo === 'CAJA') {
+        $('#p_compra_label').text('Precio Compra (por unidad interna)');
+        $('#p_compra_ayuda').text('Costo de una unidad interna; el de la caja se calcula');
+        $('#p_venta_label').text('Precio Venta (caja cerrada)');
+        $('#p_venta_ayuda').text('Precio de la caja completa');
         actualizarAyudaEquivalencia();
-    }
-    if (activo) {
-        if ((parseInt($('#p_unidades_intermedias').val(), 10) || 0) < 1) {
-            $('#p_unidades_intermedias').val(1);
-        }
-        if ((parseInt($('#p_unidades_por_intermedio').val(), 10) || 0) < 1) {
-            $('#p_unidades_por_intermedio').val(1);
-        }
-        $('#p_unidades_intermedias').attr('min', 1);
-        $('#p_unidades_por_intermedio').attr('min', 1);
+    } else if (tipo === 'CAJA_UNIDAD') {
+        $('#p_compra_label').text('Precio Compra (por unidad interna)');
+        $('#p_compra_ayuda').text('Costo de una unidad interna');
+        $('#p_venta_label').text('Precio Venta (caja)');
+        $('#p_venta_ayuda').text('Precio de la caja completa');
+        $('#p_valor_unidad_label').text('Precio Venta (unidad suelta)');
+        $('#p_valor_unidad_ayuda').text('Precio de una unidad suelta');
+        actualizarAyudaEquivalencia();
+    } else if (tipo === 'CAJA_INTERMEDIO') {
+        $('#p_compra_label').text('Precio Compra (por unidad mínima)');
+        $('#p_compra_ayuda').text('Costo de la unidad más pequeña');
+        $('#p_venta_label').text('Precio Venta (caja)');
+        $('#p_venta_ayuda').text('Precio de la caja completa');
+        $('#p_valor_unidad_label').text('Precio Venta (unidad mínima)');
+        $('#p_valor_unidad_ayuda').text('Precio de la unidad más pequeña');
+        actualizarAyudaEquivalencia();
     } else {
-        $('#p_unidades_intermedias').val(0).attr('min', 0);
-        $('#p_unidades_por_intermedio').val(1).attr('min', 0);
-        $('#p_nombre_intermedio').val('');
-        $('#p_valor_intermedio').val('');
+        $('#p_compra_label').text('Precio Compra');
+        $('#p_compra_ayuda').text('Costo de una unidad');
+        $('#p_venta_label').text('Precio Venta (unidad)');
+        $('#p_venta_ayuda').text('Precio de venta de la unidad');
     }
-    actualizarAyudaEquivalencia();
+    calcularRentabilidad();
 }
 
 function nivelIntermedioActivo() {
-    return $('#p_tiene_intermedio').is(':checked') && (parseInt($('#p_unidades_intermedias').val(), 10) || 0) > 0;
+    return $('#p_tipo_venta').val() === 'CAJA_INTERMEDIO'
+        && (parseInt($('#p_unidades_intermedias').val(), 10) || 0) > 0;
+}
+
+// Valida que la forma de venta tenga los datos mínimos
+function validarTipoVentaCaja() {
+    var tipo = $('#p_tipo_venta').val();
+    var conCaja = (tipo === 'CAJA' || tipo === 'CAJA_UNIDAD' || tipo === 'CAJA_INTERMEDIO');
+    if (!conCaja) return true;
+
+    var porCaja = parseInt($('#p_unidad_cerrada').val(), 10) || 0;
+    if (porCaja < 2) {
+        PNotify.error({ text: 'Indique cuántas unidades internas trae la caja (mínimo 2).' });
+        $('#p_unidad_cerrada').focus();
+        return false;
+    }
+
+    if (tipo === 'CAJA_INTERMEDIO') {
+        var intermedios = parseInt($('#p_unidades_intermedias').val(), 10) || 0;
+        var porIntermedio = parseInt($('#p_unidades_por_intermedio').val(), 10) || 0;
+        if (intermedios < 1) {
+            PNotify.error({ text: 'Indique cuántos niveles intermedios trae la caja.' });
+            $('#p_unidades_intermedias').focus();
+            return false;
+        }
+        if (porIntermedio < 1) {
+            PNotify.error({ text: 'Indique cuántas unidades mínimas trae cada nivel intermedio.' });
+            $('#p_unidades_por_intermedio').focus();
+            return false;
+        }
+        if (!($('#p_nombre_intermedio').val() || '').trim()) {
+            PNotify.error({ text: 'Indique el nombre del nivel intermedio (ej: sobre).' });
+            $('#p_nombre_intermedio').focus();
+            return false;
+        }
+    }
+    return true;
 }
 
 function actualizarAyudaEquivalencia() {
@@ -516,8 +571,8 @@ function actualizarAyudaEquivalencia() {
         $('#p_intermedio_ayuda').text('1 caja = ' + intermedios + ' ' + nombre + '(s) · cada ' + nombre + ' = ' + porIntermedio + ' unidades mínimas · inventario en unidades mínimas (' + total + ' por caja)');
         $('#p_valor_intermedio_label').text('Precio Venta (' + nombre + ')');
         $('#p_valor_intermedio_ayuda').text('Precio de venta de un ' + nombre + ' suelto');
-        $('#p_valor_unidad_label').text('Precio Unidad Mínima (suelta)');
-        $('#p_valor_unidad_ayuda').removeClass('d-none');
+        $('#p_valor_unidad_label').text('Precio Venta (unidad mínima)');
+        $('#p_valor_unidad_ayuda').text('Precio de la unidad más pequeña');
         return;
     }
 
@@ -525,9 +580,9 @@ function actualizarAyudaEquivalencia() {
     $('#p_intermedio_ayuda').text('');
     $('#p_unidad_cerrada_ayuda').text(porCaja > 1
         ? '1 caja = ' + porCaja + ' unidades internas'
-        : '1 = se vende solo por unidad, sin caja');
-    $('#p_valor_unidad_ayuda').toggleClass('d-none', !(sueltas && porCaja > 1));
-    $('#p_valor_unidad_label').text(sueltas && porCaja > 1 ? 'Precio Unidad Interna (suelta)' : 'Precio Unidad Interna');
+        : 'Indique cuántas unidades internas trae la caja');
+    $('#p_valor_unidad_label').text('Precio Venta (unidad suelta)');
+    $('#p_valor_unidad_ayuda').text('Precio de una unidad suelta');
 }
 
 function actualizarPreviewPresentacion() {
@@ -551,6 +606,7 @@ function actualizarPreviewPresentacion() {
 
 $(document).on('change', '#p_unidad_medida', actualizarPreviewPresentacion);
 $(document).on('change', '#p_fraccion', actualizarAyudaEquivalencia);
+$(document).on('change input', '#p_unidad_cerrada, #p_compra, #p_venta, #p_tipo_venta', calcularRentabilidad);
 $(document).on('keyup', '#p_cantidad_por_unidad', actualizarPreviewPresentacion);
 $(document).on('change', '#p_cantidad_por_unidad', actualizarPreviewPresentacion);
 // Si el usuario escribe manualmente en presentación, desactivar auto
@@ -682,13 +738,13 @@ $('#modalProducto').on('show.bs.modal', function() {
     if ($('#id_producto').val() === '0') {
         $('#p_tipo_venta').val('UNIDAD');
         toggleTipoVenta();
-        toggleNivelIntermedio();
     }
 });
 
 // Guardar producto (con imagen)
 $('#formProducto').on('submit', function(e) {
     e.preventDefault();
+    if (!validarTipoVentaCaja()) return;
     var formData = new FormData(this);
 
     // Si hay URL de imagen y no hay archivo, usarla
@@ -738,13 +794,24 @@ function editarProducto(id) {
         $('#p_categoria').val(p.id_categoria || '');
         $('#p_iva').val(p.id_iva || '');
         $('#p_seccion').val(p.id_seccion || '');
-        $('#p_tipo_venta').val(p.tipo_venta || 'UNIDAD');
+        // La forma de venta se deduce de la configuración guardada
+        var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+        var porCaja = parseInt(p.unidad_cerrada, 10) || 1;
+        var formaVenta = p.tipo_venta || 'UNIDAD';
+        if (formaVenta !== 'FRACCION_DECIMAL') {
+            if (intermedios > 0 && porCaja > 1) {
+                formaVenta = 'CAJA_INTERMEDIO';
+            } else if (porCaja > 1) {
+                formaVenta = parseInt(p.fraccion, 10) > 0 ? 'CAJA_UNIDAD' : 'CAJA';
+            } else {
+                formaVenta = 'UNIDAD';
+            }
+        }
+        $('#p_tipo_venta').val(formaVenta);
         $('#p_unidad_medida').val(p.unidad_medida || '');
         $('#p_cantidad_por_unidad').val(p.cantidad_por_unidad || 1);
         $('#p_unidad_cerrada').val(p.unidad_cerrada || 1);
         $('#p_fraccion').val(p.fraccion || 0);
-        var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
-        $('#p_tiene_intermedio').prop('checked', intermedios > 0);
         $('#p_unidades_intermedias').val(intermedios);
         $('#p_unidades_por_intermedio').val(parseInt(p.unidades_por_intermedio, 10) || 1);
         $('#p_nombre_intermedio').val(p.nombre_intermedio || '');
@@ -763,9 +830,7 @@ function editarProducto(id) {
             $('#p_presentacion').data('auto', '0');
         }
         toggleTipoVenta();
-        // toggleTipoVenta() puede ocultar los campos del nivel intermedio;
-        // se vuelven a mostrar si el producto editado tiene nivel intermedio.
-        toggleNivelIntermedio();
+        calcularRentabilidad();
 
         // Mostrar imagen actual
         if (p.imagen) {
@@ -786,14 +851,15 @@ $('#modalProducto').on('show.bs.modal', function(e) {
         $('#modalProductoLabel').html('<i class="fas fa-capsules me-2"></i>Nuevo Producto');
         $('#formProducto')[0].reset();
         $('#id_producto').val(0);
+        $('#p_tipo_venta').val('UNIDAD');
         $('#p_unidad_cerrada').val(1);
         $('#p_unidad_cerrada').prop('readonly', false);
-        $('#p_tiene_intermedio').prop('checked', false);
         $('#p_unidades_intermedias').val(0);
         $('#p_unidades_por_intermedio').val(1);
         $('#p_nombre_intermedio').val('');
         $('#p_valor_intermedio').val('');
-        toggleNivelIntermedio();
+        $('#p_fraccion').val(0);
+        toggleTipoVenta();
         $('#p_stock_minimo').val(1);
         $('#p_imagen_preview').html('<i class="fas fa-camera text-muted" style="font-size:24px"></i>');
     }

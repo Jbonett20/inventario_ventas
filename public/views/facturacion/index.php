@@ -605,7 +605,9 @@ $(document).on('keydown', function(e) {
                         p.cantidad_por_unidad||1,
                         p.valor_intermedio||0,
                         escHtml2(p.nombre_intermedio||''),
-                        p.unidades_por_intermedio||1
+                        p.unidades_por_intermedio||1,
+                        p.unidades_intermedias||0,
+                        p.unidad_cerrada||1
                     );
                     // Si hay mÃ¡s de un resultado, mostrar los demÃ¡s
                     if (r.data.length > 1) {
@@ -659,7 +661,7 @@ function mostrarResultadosBusqueda(data) {
         var stockVal = textoStockProducto(p, stockVendible);
         var stockClass = stockVendible <= (parseInt(p.stock_minimo, 10) || 0) ? 'text-danger' : 'text-muted';
         html += '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
-            'onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo_producto||p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_valor||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + stockVendible + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ',' + (p.valor_intermedio||0) + ',\'' + escHtml2(p.nombre_intermedio||'') + '\',' + (p.unidades_por_intermedio||1) + ',' + (p.unidades_intermedias||0) + ');$(\'#resultadosBusqueda\').hide()" title="Agregar al carrito">' +
+            'onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo_producto||p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_valor||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + stockVendible + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ',' + (p.valor_intermedio||0) + ',\'' + escHtml2(p.nombre_intermedio||'') + '\',' + (p.unidades_por_intermedio||1) + ',' + (p.unidades_intermedias||0) + ',' + (p.unidad_cerrada||1) + ');$(\'#resultadosBusqueda\').hide()" title="Agregar al carrito">' +
             '<div><strong>' + escHtml2(p.codigo_producto||p.codigo) + '</strong> - ' + escHtml2(p.descripcion) +
             (p.presentacion ? ' <small class="text-muted">' + escHtml2(p.presentacion) + '</small>' : '') +
             '</div><div class="text-end"><small class="' + stockClass + '">Stock: ' + stockVal + '</small>' +
@@ -715,6 +717,35 @@ function tieneNivelIntermedio(p) {
     return (parseInt(p.unidades_intermedias, 10) || 0) > 0 && (parseFloat(p.valor_intermedio) || 0) > 0;
 }
 
+// Unidades mínimas que entran en una caja completa (caja -> nivel intermedio -> unidad)
+// Se calcula con la configuración real del producto, no con cantidad_por_unidad
+// (que puede venir en 1 según cómo se guardó).
+function unidadesPorCajaCompleta(p) {
+    var porCaja = parseInt(p.unidad_cerrada, 10) || 0;
+    var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+    var porIntermedio = parseInt(p.unidades_por_intermedio, 10) || 1;
+    if (intermedios > 0 && (parseFloat(p.valor_intermedio) || 0) > 0) {
+        return intermedios * porIntermedio;
+    }
+    if (porCaja > 1) {
+        return porCaja;
+    }
+    return parseInt(p.cantidad_por_unidad, 10) || 1;
+}
+
+// Forma de venta del producto según su configuración guardada:
+//  UNIDAD | CAJA | CAJA_UNIDAD | CAJA_INTERMEDIO | FRACCION_DECIMAL
+function formaVentaProducto(p) {
+    if (p.tipo_venta === 'FRACCION_DECIMAL') return 'FRACCION_DECIMAL';
+    var porCaja = unidadesPorCajaCompleta(p);
+    var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+    var tieneInter = intermedios > 0 && (parseFloat(p.valor_intermedio) || 0) > 0;
+    var sueltas = parseInt(p.fraccion, 10) > 0;
+    if (porCaja <= 1) return 'UNIDAD';
+    if (tieneInter) return 'CAJA_INTERMEDIO';
+    return sueltas ? 'CAJA_UNIDAD' : 'CAJA';
+}
+
 function nombreNivelIntermedio(p) {
     return escHtml2(p.nombre_intermedio || 'nivel');
 }
@@ -725,14 +756,22 @@ function textoDisponibleProducto(p, unidades) {
     if (p.tipo_venta === 'FRACCION_DECIMAL') {
         return (parseFloat(unidades) || 0).toFixed(2) + ' ' + (p.unidad_medida || 'und');
     }
-    var porCaja = parseInt(p.cantidad_por_unidad, 10) || 1;
+    var porCaja = unidadesPorCajaCompleta(p);
     if (porCaja <= 1) {
         return unidades + ' und';
     }
     var cajas = Math.floor(unidades / porCaja);
     var resto = unidades % porCaja;
+    var conIntermedio = (parseInt(p.unidades_intermedias, 10) || 0) > 0 && (parseFloat(p.valor_intermedio) || 0) > 0;
+    var permiteSueltas = parseInt(p.fraccion, 10) > 0;
+
+    // Caja completa: solo cajas (lo que sobre se informa aparte)
+    if (!permiteSueltas && !conIntermedio) {
+        return cajas + ' caja(s)' + (resto > 0 ? ' (+' + resto + ' und)' : '');
+    }
+
     var texto = cajas + ' caja(s)';
-    if ((parseInt(p.unidades_intermedias, 10) || 0) > 0 && (parseFloat(p.valor_intermedio) || 0) > 0) {
+    if (conIntermedio) {
         var porIntermedio = parseInt(p.unidades_por_intermedio, 10) || 1;
         var intermedios = Math.floor(resto / porIntermedio);
         var minimas = resto % porIntermedio;
@@ -827,7 +866,7 @@ function cargarProductosPos() {
                     '<td class="fw-bold">' + etiquetaPrecio(p) + '</td>' +
                     '<td><span class="' + stockClass + '" style="font-size:12px">' + stockIcon + stockLabel + '</span></td>' +
                     '<td><button class="btn btn-sm btn-outline-primary" ' + disabled +
-                    ' onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_porcentaje||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + stockVendible + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ',' + (p.valor_intermedio||0) + ',\'' + escHtml2(p.nombre_intermedio||'') + '\',' + (p.unidades_por_intermedio||1) + ',' + (p.unidades_intermedias||0) + ')" title="Agregar al carrito">' +
+                    ' onclick="agregarAlCarrito(' + p.id_producto + ',\'' + escHtml2(p.descripcion).replace(/'/g,"\\'") + '\',\'' + escHtml2(p.codigo) + '\',' + (p.valor_venta||0) + ',' + (p.iva_porcentaje||0) + ',' + (p.fraccion||0) + ',' + (p.valor_unidad||0) + ',' + stockVendible + ',\'' + (p.tipo_venta||'UNIDAD') + '\',\'' + escHtml2(p.unidad_medida||'') + '\',' + (p.cantidad_por_unidad||1) + ',' + (p.valor_intermedio||0) + ',\'' + escHtml2(p.nombre_intermedio||'') + '\',' + (p.unidades_por_intermedio||1) + ',' + (p.unidades_intermedias||0) + ',' + (p.unidad_cerrada||1) + ')" title="Agregar al carrito">' +
                     '<i class="fas fa-cart-plus"></i></button></td></tr>';
             });
         }        $('#tbodyProductosPos').html(html);
@@ -855,11 +894,12 @@ $('#filtroProdPos').on('keyup', function() {
 });
 
 // ===== AGREGAR AL CARRITO =====
-function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd, stockDisponible, tipoVenta, unidadMedida, cantidadPorUnidad, valorIntermedio, nombreIntermedio, unidadesPorIntermedio, unidadesIntermedias) {
+function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd, stockDisponible, tipoVenta, unidadMedida, cantidadPorUnidad, valorIntermedio, nombreIntermedio, unidadesPorIntermedio, unidadesIntermedias, unidadCerrada) {
     stockDisponible = parseInt(stockDisponible, 10) || 0;
     tipoVenta = tipoVenta || 'UNIDAD';
     unidadMedida = unidadMedida || '';
     cantidadPorUnidad = parseFloat(cantidadPorUnidad) || 1;
+    unidadCerrada = parseInt(unidadCerrada, 10) || 0;
     valorUnd = parseFloat(valorUnd) || 0;
     valorIntermedio = parseFloat(valorIntermedio) || 0;
     nombreIntermedio = nombreIntermedio || '';
@@ -911,9 +951,13 @@ function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd, s
         }
     } else {
         var porIntermedio = unidadesPorIntermedio || 1;
+        // Unidades internas que trae una caja completa (24 latas, 500 pastillas…)
+        var porCajaReal = unidadesIntermedias > 0
+            ? unidadesIntermedias * porIntermedio
+            : (parseInt(unidadCerrada, 10) || cantidadPorUnidad);
         // La línea nace como una caja cerrada; los campos de sobre y unidad
         // se editan directamente en el carrito según lo que permita el producto.
-        var inicio = cantidadPorUnidad > 1
+        var inicio = porCajaReal > 1
             ? { und: 1, inter: 0, frac: 0 }
             : { und: 0, inter: 0, frac: 1 };
 
@@ -940,8 +984,10 @@ function agregarAlCarrito(id, nombre, codigo, precio, iva, fraccion, valorUnd, s
             cantidad_fraccion: inicio.frac,
             tipo_venta: tipoVenta,
             unidad_medida: unidadMedida,
-            // Equivalencia real de la caja (en 3 niveles cantidad_por_unidad llega en 1)
-            cantidad_por_unidad: unidadesIntermedias > 0 ? unidadesIntermedias * porIntermedio : cantidadPorUnidad,
+            // Unidades internas por caja: la columna "Cant." siempre son cajas
+            // (24 latas por caja, 500 pastillas por caja, etc.)
+            cantidad_por_unidad: porCajaReal,
+            unidad_cerrada: porCajaReal,
             stock_maximo: stockDisponible,
             total: precio
         });
@@ -994,7 +1040,8 @@ function actualizarCarrito() {
         $.each(carrito, function(i, p) {
             var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
             var esFrac = parseInt(p.fraccion, 10) > 0;
-            var porCaja = parseFloat(p.cantidad_por_unidad) || 1;
+            // Equivalencia real de la caja (en 3 niveles cantidad_por_unidad llega en 1)
+            var porCaja = unidadesPorCajaCompleta(p);
             var sub = subtotalLinea(p);
             var ivaV = sub * (p.iva / 100);
             var tot = sub + ivaV;
@@ -1010,38 +1057,50 @@ function actualizarCarrito() {
             var etiquetaInter = escHtml2(p.nombre_intermedio || 'Sobre');
             var etiquetaUnd = etiquetaUnidadMinima(p);
             var campo = 'class="form-control form-control-sm"';
+            var campoBloqueado = 'class="form-control form-control-sm bg-light text-muted" disabled';
+            // Forma de venta real del producto (según su configuración guardada)
+            var forma = formaVentaProducto(p);
+            var editaCajas = (forma === 'CAJA' || forma === 'CAJA_UNIDAD' || forma === 'CAJA_INTERMEDIO');
+            var editaIntermedio = (forma === 'CAJA_INTERMEDIO');
+            var editaSueltas = (forma === 'CAJA_UNIDAD' || forma === 'CAJA_INTERMEDIO');
+            var editaUnidadMinima = (forma === 'CAJA_INTERMEDIO');
+
             if (esDecimal) {
                 var undLabel = p.unidad_medida ? ' <small class="text-muted">(' + escHtml2(p.unidad_medida) + ')</small>' : '';
                 precioLabel += undLabel;
                 inputCajas = '<input type="number" ' + campo + ' value="' + (parseFloat(p.cantidad_decimal) || 0).toFixed(4) + '" min="0" step="0.25" onchange="cambiarCantidadDecimal(' + p.idCarrito + ', this.value)">';
-                inputUnd = '<input type="text" class="form-control form-control-sm bg-light text-muted" value="—" disabled>';
+                inputUnd = '<input type="text" ' + campoBloqueado + ' value="—">';
                 inputInter = '';
             } else {
-                precioLabel += conCaja ? ' <small class="text-muted">caja</small>' : ' <small class="text-muted">und</small>';
+                precioLabel += editaCajas ? ' <small class="text-muted">caja</small>' : ' <small class="text-muted">und</small>';
                 if (tieneIntermedio) {
                     precioLabel += '<br><small class="text-muted">' + etiquetaInter + ': $' + formatoNumero(p.valor_intermedio) + '</small>';
                 }
-                if (conCaja && esFrac && parseInt(p.unidades_por_intermedio, 10) > 1) {
+                if (editaSueltas) {
                     precioLabel += '<br><small class="text-muted">' + etiquetaUnd + ': $' + formatoNumero(parseFloat(p.valor_unidad) || p.precio_unitario) + '</small>';
                 }
-                // Cajas siempre editables; sobre y unidad solo si el producto
-                // se puede vender en ese nivel.
-                // La caja se guarda en cantidad_unidad y el nivel intermedio en
-                // cantidad_intermedia; el inventario cuenta cada uno una sola vez.
-                var campoCajas = conCaja ? 'cambiarCantidad(' + p.idCarrito + ', this.value, \'und\')' : 'cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')';
-                inputCajas = '<input type="number" ' + campo + ' value="' + (conCaja
-                    ? (parseInt(p.cantidad_unidad, 10) || 0)
-                    : (parseInt(p.cantidad_fraccion, 10) || 0)) + '" min="0" onchange="' + campoCajas + '">';
-                inputInter = tieneIntermedio
-                    ? '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_intermedia, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'inter\')">'
-                    : '<input type="text" class="form-control form-control-sm bg-light text-muted" value="—" disabled>';
-                if (!conCaja) {
-                    // Producto sin caja: se vende solo por unidades.
-                    inputUnd = '<input type="text" class="form-control form-control-sm bg-light text-muted" value="—" disabled>';
-                } else if (esFrac) {
-                    inputUnd = '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_fraccion, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')">';
+
+                // Columna principal: cajas si el producto tiene caja, si no unidades
+                if (editaCajas) {
+                    inputCajas = '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_unidad, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'und\')" title="Cajas">';
                 } else {
-                    inputUnd = '<input type="text" class="form-control form-control-sm bg-light text-muted" value="—" disabled title="Este producto solo se vende por caja completa">';
+                    inputCajas = '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_fraccion, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')" title="Unidades">';
+                }
+
+                // Nivel intermedio: solo editable en Caja + Intermedio + Unidad
+                if (editaIntermedio) {
+                    inputInter = '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_intermedia, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'inter\')" title="' + etiquetaInter + '(es)">';
+                } else {
+                    inputInter = '';
+                }
+
+                // Unidades sueltas: editables en Caja + Unidad y en Caja + Intermedio + Unidad
+                if (editaSueltas) {
+                    inputUnd = '<input type="number" ' + campo + ' value="' + (parseInt(p.cantidad_fraccion, 10) || 0) + '" min="0" onchange="cambiarCantidad(' + p.idCarrito + ', this.value, \'frac\')" title="' + etiquetaUnd + '(s)">';
+                } else if (conCaja) {
+                    inputUnd = '<input type="text" ' + campoBloqueado + ' value="—" title="Este producto no vende unidades sueltas">';
+                } else {
+                    inputUnd = '<input type="text" ' + campoBloqueado + ' value="—">';
                 }
             }
 
@@ -1060,14 +1119,17 @@ function actualizarCarrito() {
                 '<td><strong>' + escHtml2(p.descripcion) + '</strong><br><small class="text-muted">' + p.codigo +
                     (conCaja ? ' · ' + textoAbreCaja(p, porCaja) : '') + '</small>' + avisoStock + disponible + '</td>' +
                 '<td>' + inputCajas + '</td>' +
-                '<td class="col-intermedia' + (tieneIntermedio ? ' nivel-visible' : '') + '">' + (inputInter || '') + '</td>' +
-                '<td class="col-unidad' + (conCaja && esFrac && parseInt(p.unidades_por_intermedio, 10) > 1 ? ' nivel-visible' : '') + '">' + (inputUnd || '') + '</td>' +
+                '<td class="col-intermedia' + (editaIntermedio ? ' nivel-visible' : '') + '">' + (inputInter || '') + '</td>' +
+                '<td class="col-unidad' + (editaSueltas ? ' nivel-visible' : '') + '">' + (inputUnd || '') + '</td>' +
                 '<td>' + precioLabel + '</td>' +
                 '<td>' + p.iva + '%</td>' +
                 '<td class="fw-bold">$' + formatoNumero(tot) + '</td>' +
                 '<td class="opciones-carrito">' +
                     '<div class="d-flex flex-nowrap align-items-center gap-1">' +
                         '<button class="btn btn-sm btn-outline-success" onclick="sumarUnaCaja(' + p.idCarrito + ')" title="Agregar ' + (conCaja ? 'una caja' : 'una unidad') + '"><i class="fas fa-plus"></i></button>' +
+                        (editaSueltas
+                            ? '<button class="btn btn-sm btn-outline-primary" onclick="sumarUnaSuelta(' + p.idCarrito + ')" title="Agregar ' + etiquetaMinimaCorta(p) + ' suelta"><i class="fas fa-plus-circle"></i></button>'
+                            : '') +
                         '<button class="btn btn-sm btn-outline-secondary" onclick="restarUnaUnidad(' + p.idCarrito + ')" title="Quitar una ' + etiquetaMinimaCorta(p) + '"><i class="fas fa-minus"></i></button>' +
                         '<button class="btn btn-sm btn-outline-danger" onclick="eliminarDelCarrito(' + p.idCarrito + ')" title="Quitar del carrito"><i class="fas fa-times"></i></button>' +
                     '</div>' +
@@ -1088,17 +1150,17 @@ function actualizarCarrito() {
     $('#thColIntermedia').text(nombreIntermedio || 'Sobre');
 
     // Encabezados según lo que realmente se vende: cajas, sobres o unidades
-    var hayCajas = carrito.some(function(p) { return p.tipo_venta !== 'FRACCION_DECIMAL' && (parseInt(p.cantidad_por_unidad, 10) || 1) > 1; });
+    var hayCajas = carrito.some(function(p) { return p.tipo_venta !== 'FRACCION_DECIMAL' && unidadesPorCajaCompleta(p) > 1; });
     var hayPastillas = carrito.some(function(p) { return (parseFloat(p.valor_intermedio) || 0) > 0; });
     var haySueltas = carrito.some(function(p) {
         return p.tipo_venta !== 'FRACCION_DECIMAL'
-            && (parseInt(p.cantidad_por_unidad, 10) || 1) > 1
+            && unidadesPorCajaCompleta(p) > 1
             && (parseInt(p.fraccion, 10) || 0) > 0;
     });
     // Cajas que se pueden abrir con el botón de la fila (café: caja o sobre)
     var hayCajasAbribles = carrito.some(function(p) {
         return p.tipo_venta !== 'FRACCION_DECIMAL'
-            && (parseInt(p.cantidad_por_unidad, 10) || 1) > 1
+            && unidadesPorCajaCompleta(p) > 1
             && (parseInt(p.fraccion, 10) || 0) > 0
             && (parseFloat(p.valor_intermedio) || 0) <= 0;
     });
@@ -1107,7 +1169,24 @@ function actualizarCarrito() {
         if (!unidadMinima) unidadMinima = etiquetaUnidadMinima(p);
     });
     var hayCantidadesSueltas = hayPastillas || haySueltas || hayCajasAbribles;
-    $('#thColCajas').text(hayCajas ? 'Cajas' : 'Cant.');
+    // La columna de la cantidad principal se llama según lo que se vende:
+    // "Cant. caja" si hay cajas, "Cant. sobre" si el nivel intermedio es la unidad, o "Cant."
+    var algunaConCaja = hayCajas;
+    var algunaConIntermedio = hayPastillas;
+    var algunaSoloUnidad = carrito.some(function(p) {
+        return p.tipo_venta !== 'FRACCION_DECIMAL' && unidadesPorCajaCompleta(p) <= 1;
+    });
+    var hayFraccionDecimal = carrito.some(function(p) { return p.tipo_venta === 'FRACCION_DECIMAL'; });
+    var nombreColCant = 'Cant.';
+    if (algunaConCaja && !algunaSoloUnidad) {
+        nombreColCant = 'Cant. caja';
+    } else if (algunaConIntermedio && !algunaConCaja && !algunaSoloUnidad) {
+        nombreColCant = 'Cant. ' + (nombreIntermedio || 'nivel').toLowerCase();
+    } else if (hayFraccionDecimal && !algunaConCaja && !algunaConIntermedio) {
+        var prodDecimal = carrito.find(function(p) { return p.tipo_venta === 'FRACCION_DECIMAL'; });
+        nombreColCant = 'Cant. ' + ((prodDecimal && prodDecimal.unidad_medida) || 'und').toLowerCase();
+    }
+    $('#thColCajas').text(nombreColCant);
     // El nombre de la columna de unidades sueltas se toma del producto que la usa
     var productoSueltas = null;
     $.each(carrito, function(i, p) {
@@ -1118,11 +1197,10 @@ function actualizarCarrito() {
     });
     var nombreColUnidades = productoSueltas ? etiquetaUnidadMinima(productoSueltas) : (unidadMinima || 'Und');
     $('#thColUnidades').text(nombreColUnidades.charAt(0).toUpperCase() + nombreColUnidades.slice(1));
-    // Las columnas de nivel intermedio y unidades sueltas se muestran siempre
-    // (con "—" cuando el producto no usa ese nivel) para que la tabla no cambie
-    // de ancho y los botones de Opciones queden alineados.
-    $('#thColIntermedia').removeClass('d-none');
-    $('#thColUnidades').removeClass('d-none');
+    // Las columnas de nivel intermedio y unidades sueltas solo se muestran si
+    // algún producto del carrito realmente se vende en ese nivel.
+    $('#thColIntermedia').toggleClass('d-none', !hayPastillas);
+    $('#thColUnidades').toggleClass('d-none', !haySueltas && !hayPastillas);
 
     var descuento = parseFloat($('#descuentoValor').val()) || 0;
     var totalFinal = total - descuento;
@@ -1141,24 +1219,30 @@ function cambiarCantidad(id, val, tipo) {
     if (val < 0) val = 0;
 
     var maxStock = parseInt(item.stock_maximo, 10) || 0;
+    var porCaja = unidadesPorCajaCompleta(item);
+    var anterior;
 
-    // Cajas, nivel intermedio y unidades mínimas se editan libremente
-    if (tipo === 'und') {
+    // Cajas, nivel intermedio y unidades mínimas se editan libremente.
+    // La columna "Cantidad" de los productos sin caja también es de unidades mínimas.
+    if (tipo === 'und' && porCaja > 1) {
+        anterior = parseInt(item.cantidad_unidad, 10) || 0;
         item.cantidad_unidad = val;
     } else if (tipo === 'inter') {
+        anterior = parseInt(item.cantidad_intermedia, 10) || 0;
         item.cantidad_intermedia = val;
     } else {
+        anterior = parseInt(item.cantidad_fraccion, 10) || 0;
         item.cantidad_fraccion = val;
     }
 
-    if (unidadesInternasLinea(item) > maxStock) {
+    if (maxStock > 0 && unidadesInternasLinea(item) > maxStock) {
         PNotify.error({ text: 'Stock insuficiente. Disponible: ' + maxStock + ' unidades mínimas' });
-        if (tipo === 'und') {
-            item.cantidad_unidad = Math.max(0, val - 1);
+        if (tipo === 'und' && porCaja > 1) {
+            item.cantidad_unidad = anterior;
         } else if (tipo === 'inter') {
-            item.cantidad_intermedia = Math.max(0, val - 1);
+            item.cantidad_intermedia = anterior;
         } else {
-            item.cantidad_fraccion = Math.max(0, val - 1);
+            item.cantidad_fraccion = anterior;
         }
     }
 
@@ -1192,7 +1276,7 @@ function abrirCaja(id) {
     var item = carrito.find(function(p) { return p.idCarrito === id; });
     if (!item || item.tipo_venta === 'FRACCION_DECIMAL') return;
 
-    var porCaja = parseInt(item.cantidad_por_unidad, 10) || 1;
+    var porCaja = unidadesPorCajaCompleta(item);
     if (porCaja <= 1) return;
 
     // Todas las cajas del carrito se convierten en unidades sueltas
@@ -1226,7 +1310,7 @@ function cerrarCaja(id) {
     var item = carrito.find(function(p) { return p.idCarrito === id; });
     if (!item || item.tipo_venta === 'FRACCION_DECIMAL') return;
 
-    var porCaja = parseInt(item.cantidad_por_unidad, 10) || 1;
+    var porCaja = unidadesPorCajaCompleta(item);
     if (porCaja <= 1) return;
 
     var unidades = unidadesInternasLinea(item);
@@ -1259,7 +1343,7 @@ function sumarUnaCaja(id) {
 
     if (item.tipo_venta === 'FRACCION_DECIMAL') {
         item.cantidad_decimal = (parseFloat(item.cantidad_decimal) || 0) + 0.5;
-    } else if ((parseInt(item.cantidad_por_unidad, 10) || 1) > 1) {
+    } else if (unidadesPorCajaCompleta(item) > 1) {
         item.cantidad_unidad = (parseInt(item.cantidad_unidad, 10) || 0) + 1;
     } else {
         item.cantidad_fraccion = (parseInt(item.cantidad_fraccion, 10) || 0) + 1;
@@ -1269,8 +1353,38 @@ function sumarUnaCaja(id) {
     if (unidadesInternasLinea(item) > maxStock) {
         if (item.tipo_venta === 'FRACCION_DECIMAL') {
             item.cantidad_decimal = Math.max(0, (parseFloat(item.cantidad_decimal) || 0) - 0.5);
-        } else if ((parseInt(item.cantidad_por_unidad, 10) || 1) > 1) {
+        } else if (unidadesPorCajaCompleta(item) > 1) {
             item.cantidad_unidad = Math.max(0, (parseInt(item.cantidad_unidad, 10) || 0) - 1);
+        } else {
+            item.cantidad_fraccion = Math.max(0, (parseInt(item.cantidad_fraccion, 10) || 0) - 1);
+        }
+        PNotify.error({ text: 'Stock insuficiente. Disponible: ' + maxStock + ' unidades mínimas' });
+    }
+
+    actualizarCarrito();
+}
+
+// Agrega una unidad suelta (lata, sobre, pastilla) sin abrir la caja
+function sumarUnaSuelta(id) {
+    var item = carrito.find(function(p) { return p.idCarrito === id; });
+    if (!item) return;
+
+    if (item.tipo_venta === 'FRACCION_DECIMAL') {
+        item.cantidad_decimal = (parseFloat(item.cantidad_decimal) || 0) + 0.25;
+    } else if (tieneNivelIntermedio(item)) {
+        item.cantidad_intermedia = (parseInt(item.cantidad_intermedia, 10) || 0) + 1;
+    } else if (parseInt(item.fraccion, 10) > 0) {
+        item.cantidad_fraccion = (parseInt(item.cantidad_fraccion, 10) || 0) + 1;
+    } else {
+        return;
+    }
+
+    var maxStock = parseInt(item.stock_maximo, 10) || 0;
+    if (maxStock > 0 && unidadesInternasLinea(item) > maxStock) {
+        if (item.tipo_venta === 'FRACCION_DECIMAL') {
+            item.cantidad_decimal = Math.max(0, (parseFloat(item.cantidad_decimal) || 0) - 0.25);
+        } else if (tieneNivelIntermedio(item)) {
+            item.cantidad_intermedia = Math.max(0, (parseInt(item.cantidad_intermedia, 10) || 0) - 1);
         } else {
             item.cantidad_fraccion = Math.max(0, (parseInt(item.cantidad_fraccion, 10) || 0) - 1);
         }
@@ -1285,15 +1399,24 @@ function restarUnaUnidad(id) {
     var item = carrito.find(function(p) { return p.idCarrito === id; });
     if (!item) return;
 
+    var porCaja = unidadesPorCajaCompleta(item);
+    var permiteSueltas = parseInt(item.fraccion, 10) > 0;
+
     if (item.tipo_venta === 'FRACCION_DECIMAL') {
         item.cantidad_decimal = Math.max(0, (parseFloat(item.cantidad_decimal) || 0) - 0.25);
-    } else if ((item.cantidad_unidad || 0) > 0) {
-        // Primero se quitan cajas (de mayor a menor)
-        item.cantidad_unidad--;
+    } else if (permiteSueltas && (item.cantidad_fraccion || 0) > 0) {
+        // Si hay unidades sueltas en la línea, se quitan primero esas
+        item.cantidad_fraccion--;
     } else if ((item.cantidad_intermedia || 0) > 0) {
         item.cantidad_intermedia--;
-    } else if ((item.cantidad_fraccion || 0) > 0) {
-        item.cantidad_fraccion--;
+    } else if ((item.cantidad_unidad || 0) > 0) {
+        // Luego se quitan cajas; si la caja está cerrada, se abre para sacar una unidad
+        if (!permiteSueltas && porCaja > 1) {
+            item.cantidad_unidad--;
+            item.cantidad_fraccion = porCaja - 1;
+        } else {
+            item.cantidad_unidad--;
+        }
     }
 
     actualizarCarrito();
@@ -1578,6 +1701,27 @@ function facturar(tipo) {
         return;
     }
 
+    // El descuento se toma de lo que queda por cobrar; si ya se registraron
+    // pagos por el total sin descuento, se ajusta el último pago para que
+    // el cliente no pague de más (y la ganancia no quede inflada).
+    var descuentoVenta = parseFloat($('#descuentoValor').val()) || 0;
+    if (descuentoVenta > 0) {
+        var sumaPagos = totalPagado();
+        if (sumaPagos > totalPagar + 0.009) {
+            var exceso = Math.round((sumaPagos - totalPagar) * 100) / 100;
+            var ultimo = pagos[pagos.length - 1];
+            if (ultimo) {
+                ultimo.monto = Math.round((ultimo.monto - exceso) * 100) / 100;
+                if (ultimo.monto <= 0) pagos.pop();
+            }
+            calcularCambio();
+            if (!ventaCredito && totalPagado() + 0.009 < totalPagar) {
+                PNotify.error({ text: 'Faltan $' + formatoNumero(totalPagar - totalPagado()) + ' por cubrir' });
+                return;
+            }
+        }
+    }
+
     var data = {
         id_cliente: parseInt($('#id_cliente').val()) || 1,
         tipo_pago: ventaCredito ? 'CREDITO' : metodoSeleccionado(),
@@ -1585,7 +1729,7 @@ function facturar(tipo) {
         fecha_vencimiento: ventaCredito ? ($('#fechaVencimientoCredito').val() || null) : null,
         pagos: pagos,
         pago_recibido: totalPagado(),
-        descuento: parseFloat($('#descuentoValor').val()) || 0,
+        descuento: descuentoVenta,
         tipo: tipo,
         id_vendedor_registrado: parseInt($('#id_vendedor_registrado').val()) || null,
         detalles: detalles
@@ -1718,19 +1862,28 @@ $('#buscarProducto').on('keydown', function(e) {
 /* Los botones +, - y × siempre en una sola línea, sin importar el producto */
 #tablaCarrito td.opciones-carrito {
     white-space: nowrap;
+    width: 130px;
+    min-width: 130px;
+}
+#tablaCarrito td.opciones-carrito > div {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.25rem;
 }
 #tablaCarrito td.opciones-carrito .btn {
     flex: 0 0 auto;
     padding: 0.2rem 0.45rem;
+    line-height: 1.2;
 }
-/* Las columnas de nivel se mantienen aunque el producto no use ese nivel:
-   así la tabla no cambia de ancho y los botones quedan alineados. */
+/* Las columnas de nivel solo ocupan espacio cuando el producto realmente
+   usa ese nivel (se marcan con .nivel-visible). */
 #tablaCarrito td.col-intermedia,
 #tablaCarrito td.col-unidad {
-    display: table-cell !important;
+    display: none;
 }
-#tablaCarrito td.col-intermedia:not(.nivel-visible),
-#tablaCarrito td.col-unidad:not(.nivel-visible) {
-    visibility: hidden;
+#tablaCarrito td.col-intermedia.nivel-visible,
+#tablaCarrito td.col-unidad.nivel-visible {
+    display: table-cell;
 }
 </style>

@@ -364,6 +364,7 @@ class IngresoController
         $idProducto = (int)($data['id_producto'] ?? 0);
         $cantU = (int)($data['cantidad_unidad'] ?? 0);
         $cantF = (int)($data['cantidad_fraccion'] ?? 0);
+        $tipoCantidad = strtoupper(trim((string)($data['tipo_cantidad'] ?? 'UNIDAD')));
         $valorCompra = (isset($data['valor_compra']) && $data['valor_compra'] !== '' && $data['valor_compra'] !== null)
             ? (float)$data['valor_compra'] : null;
 
@@ -378,7 +379,7 @@ class IngresoController
         }
 
         try {
-            $idDetalle = $this->model->agregarProductoFactura($idFactura, $idProducto, $cantU, $cantF, $valorCompra);
+            $idDetalle = $this->model->agregarProductoFactura($idFactura, $idProducto, $cantU, $cantF, $valorCompra, $tipoCantidad);
             Response::success(['id_detalle' => $idDetalle], 'Producto agregado a la factura');
         } catch (\Exception $e) {
             Response::error($e->getMessage(), 422);

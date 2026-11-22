@@ -261,10 +261,21 @@ class Producto
      */
     private function normalizarEquivalencia(array $data, array $antes = []): array
     {
-        $tiposValidos = ['UNIDAD', 'CAJA', 'FRACCION_DECIMAL'];
+        $tiposValidos = ['UNIDAD', 'CAJA', 'FRACCION_DECIMAL', 'CAJA_UNIDAD', 'CAJA_INTERMEDIO'];
         $tipoVenta = strtoupper(trim((string)($data['tipo_venta'] ?? $antes['tipo_venta'] ?? 'UNIDAD')));
         if (!in_array($tipoVenta, $tiposValidos, true)) {
-            throw new \RuntimeException('El tipo de venta debe ser UNIDAD, CAJA o FRACCION_DECIMAL.');
+            throw new \RuntimeException('La forma de venta no es válida.');
+        }
+
+        // Las formas de venta se traducen a las 3 configuraciones internas:
+        // CAJA_UNIDAD / CAJA_INTERMEDIO se guardan como UNIDAD con caja y fracción.
+        if ($tipoVenta === 'CAJA_UNIDAD' || $tipoVenta === 'CAJA_INTERMEDIO') {
+            $data['fraccion'] = 1;
+            $tipoVenta = 'UNIDAD';
+        } elseif ($tipoVenta === 'CAJA') {
+            $data['fraccion'] = 0;
+        } elseif ($tipoVenta === 'UNIDAD' && !array_key_exists('fraccion', $data)) {
+            $data['fraccion'] = (int)($antes['fraccion'] ?? 0);
         }
         $data['tipo_venta'] = $tipoVenta;
 
@@ -289,6 +300,11 @@ class Producto
         if ($porCaja < 1) {
             throw new \RuntimeException('Una caja debe contener al menos una unidad interna.');
         }
+        // "Caja completa" exige más de una unidad: con 1 el producto se vendería
+        // como unidad suelta y el POS no mostraría la caja.
+        if ($tipoVenta === 'CAJA' && $porCaja < 2) {
+            throw new \RuntimeException('Para vender por caja completa, indique cuántas unidades internas trae la caja (mínimo 2). Si no se vende por caja, use el tipo de venta "Unidad (entera)".');
+        }
         $sueltas = (int)($data['fraccion'] ?? $antes['fraccion'] ?? 0) > 0;
 
         // Se valida con el nivel intermedio ya normalizado: si la caja trae
@@ -304,8 +320,17 @@ class Producto
             $data['valor_unidad'] = (float)$precioInterno;
         }
 
+        // Si no se venden sueltas, el precio de la unidad interna no aplica
+        if (!$sueltas) {
+            $data['valor_unidad'] = 0;
+        }
+
         $data['unidad_cerrada'] = $porCaja;
         $data['fraccion'] = $sueltas ? 1 : 0;
+
+        // `cantidad_por_unidad` es la equivalencia de la caja en unidades internas.
+        // El POS la usa para saber si el producto se vende por caja.
+        $data['cantidad_por_unidad'] = $porCaja;
 
         return $data;
     }
@@ -385,7 +410,11 @@ class Producto
             'unidad'             => $data['valor_unidad'] ?? 0,
             'tope'               => (isset($data['precio_maximo_regulado']) && $data['precio_maximo_regulado'] !== '' && $data['precio_maximo_regulado'] !== null)
                                         ? (float)$data['precio_maximo_regulado'] : null,
-            'rentabilidad'       => $this->calcularRentabilidad($data['valor_compra'] ?? 0, $data['valor_venta'] ?? 0),
+            'rentabilidad'       => $this->calcularRentabilidad(
+                                        (float)($data['valor_compra'] ?? 0),
+                                        (float)($data['valor_venta'] ?? 0),
+                                        (int)($data['unidad_cerrada'] ?? 1)
+                                    ),
             'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
             'imagen'             => $data['imagen'] ?? '',
             'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
@@ -526,7 +555,7 @@ class Producto
             'compra'             => $compra,
             'venta'              => $venta,
             'unidad'             => $unidad,
-            'rentabilidad'       => $this->calcularRentabilidad($compra, $venta),
+            'rentabilidad'       => $this->calcularRentabilidad($compra, $venta, (int)($data['unidad_cerrada'] ?? 1)),
             'tope'               => $tope,
             'stock_minimo'       => (int)($data['stock_minimo'] ?? 1),
             'imagen'             => $data['imagen'] ?? '',
@@ -553,7 +582,7 @@ class Producto
                 'precio_venta_nuevo'     => $venta,
                 'precio_unidad_anterior' => (float)($antes['valor_unidad'] ?? 0),
                 'precio_unidad_nuevo'    => $unidad,
-                'rentabilidad'           => $this->calcularRentabilidad($compra, $venta),
+                'rentabilidad'           => $this->calcularRentabilidad($compra, $venta, (int)($data['unidad_cerrada'] ?? 1)),
                 'motivo'                 => $data['motivo_precio'] ?? 'Cambio manual desde Productos',
                 'id_usuario'             => $idUsuario,
             ]);
@@ -589,10 +618,14 @@ class Producto
 
     /**
      * Calcular rentabilidad
+     *
+     * El costo se guarda por unidad interna y el precio de venta es por caja,
+     * así que el costo de la venta se multiplica por las unidades de la caja.
      */
-    private function calcularRentabilidad(float $compra, float $venta): float
+    private function calcularRentabilidad(float $compra, float $venta, int $unidadesPorCaja = 1): float
     {
         if ($compra <= 0 || $venta <= 0) return 0;
-        return round((($venta - $compra) / $venta) * 100, 2);
+        $costoVenta = $compra * max(1, $unidadesPorCaja);
+        return round((($venta - $costoVenta) / $venta) * 100, 2);
     }
 }
