@@ -599,7 +599,6 @@ function cargarInv(page, s) {
                     '<td class="text-center ' + (p.unidad <= p.stock_minimo ? 'text-danger fw-bold' : '') + '">' + (p.stock_minimo||0) + '</td>' +
                     '<td>' +
                         '<button class="btn btn-sm btn-outline-dark me-1" title="Historial de precios y compras" onclick="verHistorialPrecios(' + p.id_producto + ')"><i class="fas fa-history"></i></button>' +
-                        '<button class="btn btn-sm btn-warning" onclick="ajustarInv(' + p.id_producto + ',\'' + escHtml(p.descripcion).replace(/'/g,"\\'") + '\',' + (p.unidad||0) + ',' + (p.stock_fraccion||0) + ')"><i class="fas fa-edit me-1"></i>Ajustar</button>' +
                     '</td>' +
                     '</tr>';
             });
@@ -659,7 +658,6 @@ function cargarReorden() {
                 '<td class="text-center fw-bold text-primary">' + p.sugerido + ' und</td>' +
                 '<td class="text-center"><span class="badge bg-info">' + p.cajas_sugeridas + ' caja(s)</span></td>' +
                 '<td class="text-center text-nowrap">' +
-                    '<button class="btn btn-sm btn-warning me-1" onclick="ajustarInv(' + p.id_producto + ',\'' + nombre + '\',' + (p.unidad||0) + ',' + (p.stock_fraccion||0) + ')" title="Ajustar stock"><i class="fas fa-balance-scale"></i></button>' +
                     '<a href="' + BASE_URL + '/ingresos" class="btn btn-sm btn-outline-primary" title="Registrar ingreso"><i class="fas fa-plus"></i></a>' +
                 '</td></tr>';
         });

@@ -100,6 +100,12 @@ class Ingreso
             ? round((($stock * $costoActual) + ($cantidadNueva * $precioCompra)) / $totalStock, 2)
             : round($precioCompra, 2);
 
+        // Costo actual inválido (en cero o mayor que el precio de compra): el promedio
+        // ponderado no tiene base y dejaría un costo irreal. Se toma la compra real.
+        if ($costoActual <= 0 || $costoActual > $precioCompra) {
+            $costoNuevo = round($precioCompra, 2);
+        }
+
         $r = [
             'id_producto'           => $idProducto,
             'costo_actual'          => $costoActual,
@@ -253,36 +259,66 @@ class Ingreso
      * Costo promedio de TODAS las compras registradas de un producto.
      * Sirve como respaldo cuando no se puede restaurar un valor exacto.
      *
+     * El promedio se calcula sobre el total pagado y las unidades que realmente
+     * entraron (cajas × unidades por caja + sueltas), porque valor_compra está
+     * expresado por unidad interna. Así el costo no queda multiplicado por el
+     * tamaño de la caja.
+     *
      * @param int      $idProducto
      * @param int|null $excluirIngreso Ingreso que NO debe contarse (el que se está anulando)
      */
     /** @return array<string, mixed>|null */
     public function costoPromedioDeCompras(int $idProducto, ?int $excluirIngreso = null): ?array
     {
-        $sql = "SELECT COALESCE(SUM(cantidad_unidad * valor_compra), 0) AS total,
-                       COALESCE(SUM(cantidad_unidad), 0) AS cantidad,
-                       COUNT(*) AS compras
-                FROM vb_ingresos
-                WHERE id_producto = :id AND valor_compra > 0 AND cantidad_unidad > 0";
+        $sql = "SELECT i.cantidad_unidad, i.cantidad_fraccion, i.valor_compra,
+                       COALESCE(p.unidad_cerrada, 1) AS unidad_cerrada
+                FROM vb_ingresos i
+                LEFT JOIN vb_productos p ON p.id_producto = i.id_producto
+                WHERE i.id_producto = :id AND i.valor_compra > 0
+                      AND (i.cantidad_unidad > 0 OR i.cantidad_fraccion > 0)";
         $params = ['id' => $idProducto];
 
         if ($excluirIngreso !== null) {
-            $sql .= " AND id_ingreso <> :excluir";
+            $sql .= " AND i.id_ingreso <> :excluir";
             $params['excluir'] = $excluirIngreso;
         }
 
-        $r = $this->db->fetchOne($sql, $params);
-        $cantidad = (int)($r['cantidad'] ?? 0);
+        $compras = $this->db->select($sql, $params);
+        $total = 0.0;
+        $cantidad = 0;
+
+        foreach ($compras as $c) {
+            $unidades = $this->unidadesInternasIngreso($c, (int)$c['unidad_cerrada']);
+            if ($unidades <= 0) {
+                continue;
+            }
+            $total += $unidades * (float)$c['valor_compra'];
+            $cantidad += $unidades;
+        }
 
         if ($cantidad <= 0) {
             return null;
         }
 
         return [
-            'costo'   => round((float)$r['total'] / $cantidad, 2),
-            'compras' => (int)($r['compras'] ?? 0),
+            'costo'   => round($total / $cantidad, 2),
+            'compras' => count($compras),
             'cantidad'=> $cantidad,
         ];
+    }
+
+    /**
+     * Unidades internas que ingresaron al inventario con una compra.
+     * valor_compra siempre está expresado por unidad interna, por eso el
+     * costo se pondera con estas unidades y no con el número de cajas.
+     *
+     * @param array<string, mixed> $ingreso
+     */
+    private function unidadesInternasIngreso(array $ingreso, int $unidadCerrada): int
+    {
+        $porCaja = max(1, $unidadCerrada);
+        return (max(0, (int)($ingreso['cantidad_unidad'] ?? 0)) * $porCaja)
+            + max(0, (int)($ingreso['cantidad_fraccion'] ?? 0));
     }
 
     /**
@@ -297,7 +333,7 @@ class Ingreso
      * @return array|null Detalle del cambio, o null si no había nada que revertir
      */
     /** @return array<string, mixed>|null */
-    public function revertirPreciosPorIngreso(int $idProducto, int $idIngreso, ?int $idUsuario = null, string $motivoExtra = ''): ?array
+    public function revertirPreciosPorIngreso(int $idProducto, int $idIngreso, ?int $idUsuario = null, string $motivoExtra = '', ?int $unidadesIngreso = null): ?array
     {
         $actual = $this->db->fetchOne(
             "SELECT valor_compra, valor_venta, valor_unidad, rentabilidad
@@ -313,6 +349,24 @@ class Ingreso
         $unidadActual = ($actual['valor_unidad'] !== null) ? round((float)$actual['valor_unidad'], 2) : null;
         $rentabilidad = round((float)$actual['rentabilidad'], 2);
 
+        // Ingreso que se está anulando: su precio está por unidad interna y su
+        // cantidad en unidades internas (cajas × unidades por caja + sueltas).
+        $ing = $this->db->fetchOne(
+            "SELECT i.cantidad_unidad, i.cantidad_fraccion, i.valor_compra,
+                    COALESCE(p.unidad_cerrada, 1) AS unidad_cerrada
+             FROM vb_ingresos i
+             LEFT JOIN vb_productos p ON p.id_producto = i.id_producto
+             WHERE i.id_ingreso = :id",
+            ['id' => $idIngreso]
+        );
+        $precioIngreso = (float)($ing['valor_compra'] ?? 0);
+        $unidades = $unidadesIngreso;
+        if ($unidades === null) {
+            $unidades = $ing
+                ? $this->unidadesInternasIngreso($ing, (int)$ing['unidad_cerrada'])
+                : 0;
+        }
+
         // Fila del historial que dejó ese ingreso
         $h = $this->db->fetchOne(
             "SELECT * FROM vb_productos_precios_historial
@@ -320,6 +374,14 @@ class Ingreso
               ORDER BY id_historial DESC LIMIT 1",
             ['p' => $idProducto, 'r' => $idIngreso]
         );
+
+        // Stock que queda después de retirar este ingreso (para no perder el costo
+        // de las compras anteriores cuando el stock actual es menor)
+        $inv = $this->db->fetchOne(
+            "SELECT COALESCE(unidad, 0) AS unidad FROM vb_inventario WHERE id_producto = :id",
+            ['id' => $idProducto]
+        );
+        $stockDespues = max(0, (int)($inv['unidad'] ?? 0) - (int)$unidades);
 
         if ($h && abs($costoActual - (float)$h['costo_nuevo']) < 0.01) {
             // Nadie movió el costo después de ese ingreso: reversión exacta
@@ -334,7 +396,19 @@ class Ingreso
                 return null; // ya no quedan compras con precio: mejor no inventar un costo
             }
 
-            $costoNuevo  = $calc['costo'];
+            $costoNuevo = $calc['costo'];
+            if ($stockDespues > 0) {
+                // El stock actual está valuado al costo promedio vigente; se le
+                // devuelve el costo de este ingreso y se reparte entre lo que queda.
+                $costoNuevo = round(
+                    (($stockDespues * $costoActual) - ((int)$unidades * $precioIngreso)) / $stockDespues,
+                    2
+                );
+                if ($costoNuevo <= 0) {
+                    $costoNuevo = $calc['costo'];
+                }
+            }
+
             $ventaNueva  = ($rentabilidad > 0 && $rentabilidad < 100)
                 ? round($costoNuevo / (1 - $rentabilidad / 100), 2)
                 : $ventaActual;
@@ -488,7 +562,8 @@ class Ingreso
         $obs        = $data['observacion'] ?? '';
 
         $prod = $this->db->fetchOne(
-            "SELECT unidad_cerrada, valor_compra FROM vb_productos WHERE id_producto = :id",
+            "SELECT unidad_cerrada, unidades_intermedias, unidades_por_intermedio, valor_compra
+             FROM vb_productos WHERE id_producto = :id",
             ['id' => $idProducto]
         );
 
@@ -497,35 +572,42 @@ class Ingreso
             ? (float)$data['valor_compra']
             : (float)($prod['valor_compra'] ?? 0);
 
+        // Unidades internas que trae una caja completa. Con 3 niveles
+        // (caja -> sobre -> pastilla) la caja trae sobres × unidades por sobre.
+        $undPorCaja = (int)($prod['unidad_cerrada'] ?? 1);
+        if ($undPorCaja < 1) $undPorCaja = 1;
+        $intermedios = (int)($prod['unidades_intermedias'] ?? 0);
+        $porIntermedio = max(1, (int)($prod['unidades_por_intermedio'] ?? 1));
+        if ($intermedios > 0) {
+            $undPorCaja = $intermedios * $porIntermedio;
+        }
+
         // Cantidad con la que se calcula el PROMEDIO del costo.
-        // El precio de compra es por unidad cerrada (caja), así que cuando el
-        // ingreso es por cajas el promedio también se hace en cajas.
+        // El precio de compra es por unidad interna, así que el promedio
+        // siempre se hace en unidades internas.
         $cantParaPromedio = $cantUnd;
 
         if ($tipoCant === 'CAJA' || $tipoCant === 'CAJA_UND') {
-            $undPorCaja = (int)($prod['unidad_cerrada'] ?? 1);
-            if ($undPorCaja < 1) $undPorCaja = 1;
             $totalUnd = $cantUnd * $undPorCaja;
             if ($tipoCant === 'CAJA_UND') {
                 // Cajas completas + unidades internas sueltas en el mismo ingreso.
-                // El precio de compra se toma como costo de la unidad interna.
                 $totalUnd += $cantFrac;
-                $cantParaPromedio = $totalUnd;
                 $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por cajas y unidades: {$cantUnd} cajas × {$undPorCaja} und"
                      . ($cantFrac > 0 ? " + {$cantFrac} und sueltas" : '')
                      . " = {$totalUnd} und"
                      . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por unidad interna';
             } else {
                 $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por cajas: {$cantUnd} cajas × {$undPorCaja} und = {$totalUnd} und"
-                     . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por caja';
-                $cantParaPromedio = $cantUnd; // el precio es por caja
+                     . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.') . ' por unidad interna';
             }
             $cantUnd = $totalUnd;
             $cantFrac = 0;
+            $cantParaPromedio = $totalUnd;
         } else {
             $obs = ($obs ? $obs . ' | ' : '') . "Ingreso por unidades: {$cantUnd} und"
                  . ($cantFrac > 0 ? " + {$cantFrac} frac" : '')
                  . ' | Compra: $' . number_format($nuevoValorCompra, 0, ',', '.');
+            $cantParaPromedio = $cantUnd + $cantFrac;
         }
 
         // La fila de inventario debe existir ANTES del INSERT:
@@ -610,6 +692,26 @@ class Ingreso
     }
 
     /**
+     * Unidades internas que representa una cantidad de ingreso según el tipo
+     * de cantidad elegido (UNIDAD, CAJA o CAJA_UND).
+     *
+     * @param array<string, mixed> $producto
+     */
+    public function unidadesInternasPorTipo(array $producto, int $cantidad, string $tipoCantidad, int $sueltas = 0): int
+    {
+        $porCaja = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+        // Con 3 niveles (caja -> sobre -> pastilla) la caja trae sobres × unidades por sobre
+        $intermedios = (int)($producto['unidades_intermedias'] ?? 0);
+        if ($intermedios > 0) {
+            $porCaja = $intermedios * max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+        }
+        if ($tipoCantidad === 'CAJA' || $tipoCantidad === 'CAJA_UND') {
+            return (max(0, $cantidad) * $porCaja) + ($tipoCantidad === 'CAJA_UND' ? max(0, $sueltas) : 0);
+        }
+        return max(0, $cantidad) + max(0, $sueltas);
+    }
+
+    /**
      * Listar facturas de compra (ingreso por factura)
      */
     /** @return list<array<string, mixed>> */
@@ -633,6 +735,11 @@ class Ingreso
         $where  = [];
         $params = [];
         $totalFacturaSql = "(SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(NULLIF(d.valor_compra, 0), p.valor_compra)), 0)
+            FROM vb_ingresos_detalle_factura d
+            JOIN vb_productos p ON p.id_producto = d.id_producto
+            WHERE d.id_ingreso_factura = f.id_ingreso_factura)";
+        // Unidades internas que realmente entran: cajas × unidades por caja + sueltas
+        $totalUnidadesSql = "(SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(p.unidad_cerrada, 1) + d.cantidad_fraccion), 0)
             FROM vb_ingresos_detalle_factura d
             JOIN vb_productos p ON p.id_producto = d.id_producto
             WHERE d.id_ingreso_factura = f.id_ingreso_factura)";
@@ -679,6 +786,7 @@ class Ingreso
                       WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_unidad,
                     (SELECT COALESCE(SUM(d.cantidad_fraccion), 0) FROM vb_ingresos_detalle_factura d
                       WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_fraccion,
+                    {$totalUnidadesSql} AS total_unidades,
                     {$totalFacturaSql} AS total_factura,
                     {$totalPagadoSql} AS total_pagado
              FROM vb_ingresos_factura f
@@ -730,6 +838,10 @@ class Ingreso
                      FROM vb_ingresos_detalle_factura d
                      JOIN vb_productos p ON p.id_producto = d.id_producto
                      WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_factura,
+                    (SELECT COALESCE(SUM(d.cantidad_unidad * COALESCE(p.unidad_cerrada, 1) + d.cantidad_fraccion), 0)
+                     FROM vb_ingresos_detalle_factura d
+                     JOIN vb_productos p ON p.id_producto = d.id_producto
+                     WHERE d.id_ingreso_factura = f.id_ingreso_factura) AS total_unidades,
                     (SELECT COALESCE(SUM(pg.monto), 0) FROM vb_ingresos_factura_pagos pg
                      WHERE pg.id_ingreso_factura = f.id_ingreso_factura) AS total_pagado
              FROM vb_ingresos_factura f
@@ -946,6 +1058,8 @@ class Ingreso
                     d.valor_compra AS precio_compra,
                     p.codigo, p.descripcion, p.presentacion, p.codigo_barras_1,
                     p.valor_compra AS costo_promedio, p.valor_venta, p.valor_unidad, p.unidad_cerrada,
+                    p.unidades_intermedias, p.unidades_por_intermedio, p.nombre_intermedio, p.valor_intermedio,
+                    p.fraccion, p.tipo_venta,
                     inv.unidad AS stock_unidad, inv.fraccion AS stock_fraccion
              FROM vb_ingresos_detalle_factura d
              JOIN vb_productos p ON d.id_producto = p.id_producto
@@ -961,8 +1075,10 @@ class Ingreso
      *
      * @param float|null $valorCompra Precio pagado por unidad cerrada. Si no se
      *                                envía, se toma el costo que hoy tiene el producto.
+     * @param string     $tipoCantidad UNIDAD | CAJA | CAJA_UND. Con CAJA la cantidad
+     *                                se guarda en unidades internas (cajas × unidades por caja).
      */
-    public function agregarProductoFactura(int $idFactura, int $idProducto, int $cantU, int $cantF, ?float $valorCompra = null): int
+    public function agregarProductoFactura(int $idFactura, int $idProducto, int $cantU, int $cantF, ?float $valorCompra = null, string $tipoCantidad = 'UNIDAD'): int
     {
         $factura = $this->obtenerFactura($idFactura);
         if (!$factura) {
@@ -973,12 +1089,19 @@ class Ingreso
         }
 
         $prod = $this->db->fetchOne(
-            "SELECT id_producto, valor_compra FROM vb_productos WHERE id_producto = :id AND activo = 1",
+            "SELECT id_producto, valor_compra, unidad_cerrada, unidades_intermedias, unidades_por_intermedio
+             FROM vb_productos WHERE id_producto = :id AND activo = 1",
             ['id' => $idProducto]
         );
         if (!$prod) {
             throw new \RuntimeException('El producto no existe o está inactivo');
         }
+
+        // Las cantidades se guardan siempre en unidades internas: así el stock
+        // del inventario y el costo promedio coinciden sin conversiones extra.
+        $tipoCantidad = strtoupper(trim($tipoCantidad));
+        $cantU = $this->unidadesInternasPorTipo($prod, $cantU, $tipoCantidad, $cantF);
+        $cantF = 0;
 
         // Si no digitaron precio, se usa el costo que ya tiene el producto
         $precio = ($valorCompra !== null && $valorCompra > 0)
@@ -1084,6 +1207,24 @@ class Ingreso
                     $precioCompra = (float)($d['costo_promedio'] ?? 0);
                 }
 
+                // Unidades internas por caja según la forma de venta del producto:
+                // con 3 niveles la caja trae sobres × unidades por sobre.
+                $porCaja = max(1, (int)($d['unidad_cerrada'] ?? 1));
+                $intermedios = (int)($d['unidades_intermedias'] ?? 0);
+                if ($intermedios > 0) {
+                    $porCaja = $intermedios * max(1, (int)($d['unidades_por_intermedio'] ?? 1));
+                }
+                $textoCantidad = $cantU . ' und';
+                if ($porCaja > 1 && $cantU >= $porCaja) {
+                    $cajas = intdiv($cantU, $porCaja);
+                    $resto = $cantU % $porCaja;
+                    $textoCantidad = $cajas . ' caja(s) × ' . $porCaja . ' und';
+                    if ($resto > 0) {
+                        $textoCantidad .= ' + ' . $resto . ' und';
+                    }
+                    $textoCantidad .= ' = ' . $cantU . ' und';
+                }
+
                 $idIngreso = $this->db->insert(
                     "INSERT INTO vb_ingresos
                         (id_producto, cantidad_unidad, cantidad_fraccion, valor_compra, tipo,
@@ -1096,7 +1237,8 @@ class Ingreso
                         'vcompra' => $precioCompra > 0 ? $precioCompra : null,
                         'fac'     => $idFactura,
                         'obs'     => 'Factura de compra: ' . $factura['nombre_factura']
-                                   . ' | Compra: $' . number_format($precioCompra, 0, ',', '.'),
+                                   . ' | ' . $textoCantidad
+                                   . ' | Compra: $' . number_format($precioCompra, 0, ',', '.') . ' por unidad interna',
                         'uid'     => $idUsuario,
                         'fecha'   => $factura['fecha'] ?: date('Y-m-d'),
                     ]
@@ -1157,9 +1299,12 @@ class Ingreso
         }
 
         $ingresos = $this->db->select(
-            "SELECT id_ingreso, id_producto, cantidad_unidad, cantidad_fraccion
-             FROM vb_ingresos WHERE id_factura_compra = :id
-             ORDER BY id_ingreso DESC",
+            "SELECT i.id_ingreso, i.id_producto, i.cantidad_unidad, i.cantidad_fraccion,
+                    COALESCE(p.unidad_cerrada, 1) AS unidad_cerrada
+             FROM vb_ingresos i
+             LEFT JOIN vb_productos p ON p.id_producto = i.id_producto
+             WHERE i.id_factura_compra = :id
+             ORDER BY i.id_ingreso DESC",
             ['id' => $idFactura]
         );
 
@@ -1167,8 +1312,10 @@ class Ingreso
         try {
             foreach ($ingresos as $ing) {
                 $idProducto = (int)$ing['id_producto'];
-                $cantU = (int)$ing['cantidad_unidad'];
-                $cantF = (int)$ing['cantidad_fraccion'];
+                // El stock se lleva en unidades internas: una caja descuenta todas sus unidades
+                $unidades = $this->unidadesInternasIngreso($ing, (int)$ing['unidad_cerrada']);
+                $cantU = $unidades;
+                $cantF = 0;
 
                 $this->db->executeAffected(
                     "UPDATE vb_inventario
@@ -1184,7 +1331,8 @@ class Ingreso
                     $idProducto,
                     (int)$ing['id_ingreso'],
                     $idUsuario,
-                    'Se revirtió la factura de compra: ' . $factura['nombre_factura']
+                    'Se revirtió la factura de compra: ' . $factura['nombre_factura'],
+                    $unidades
                 );
 
                 $this->db->executeAffected(
@@ -1204,8 +1352,8 @@ class Ingreso
                      VALUES (:p, 'AJUSTE', :u, :f, :ur, :fr, :obs, :uid, NOW())",
                     [
                         'p'   => $idProducto,
-                        'u'   => -1 * $cantU,
-                        'f'   => -1 * $cantF,
+                        'u'   => -1 * $unidades,
+                        'f'   => 0,
                         'ur'  => (int)($inv['unidad'] ?? 0),
                         'fr'  => (int)($inv['fraccion'] ?? 0),
                         'obs' => 'Reversa de factura de compra: ' . $factura['nombre_factura'],
@@ -1335,8 +1483,10 @@ class Ingreso
         }
 
         $idProducto = (int)$ing['id_producto'];
-        $cantU = (int)$ing['cantidad_unidad'];
-        $cantF = (int)$ing['cantidad_fraccion'];
+        // El stock se lleva en unidades internas: una caja descuenta todas sus unidades
+        $unidades = $this->unidadesInternasIngreso($ing, (int)($ing['unidad_cerrada'] ?? 1));
+        $cantU = $unidades;
+        $cantF = 0;
         $reversion = null;
 
         $this->db->beginTransaction();
@@ -1355,7 +1505,8 @@ class Ingreso
                 $idProducto,
                 $id,
                 $idUsuario,
-                'Se eliminó el ingreso #' . $id
+                'Se eliminó el ingreso #' . $id,
+                $unidades
             );
 
             $this->db->executeAffected(
@@ -1375,8 +1526,8 @@ class Ingreso
                  VALUES (:p, 'AJUSTE', :u, :f, :ur, :fr, :obs, :uid, NOW())",
                 [
                     'p'   => $idProducto,
-                    'u'   => -1 * $cantU,
-                    'f'   => -1 * $cantF,
+                    'u'   => -1 * $unidades,
+                    'f'   => 0,
                     'ur'  => (int)($inv['unidad'] ?? 0),
                     'fr'  => (int)($inv['fraccion'] ?? 0),
                     'obs' => 'Reversa por eliminación del ingreso #' . $id,

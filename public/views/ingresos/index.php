@@ -65,25 +65,26 @@
                                 <div id="ing_resultados" class="list-group mt-2" style="max-height:220px;overflow-y:auto;display:none;"></div>
                                 <div id="ing_producto_seleccionado" class="alert alert-info mt-2 py-2 d-none">
                                     <strong id="ing_prod_nombre"></strong> <small class="text-muted" id="ing_prod_codigo"></small>
+                                    <div class="small mt-1" id="ing_prod_config"></div>
                                 </div>
                             </div>
-                            <div class="col-12">
+                            <div class="col-12" id="ing_bloque_cantidad" style="display:none;">
                                 <label class="form-label fw-semibold">Tipo de cantidad</label>
                                 <div class="d-flex gap-3">
                                     <label class="btn btn-outline-primary btn-sm rounded-pill active" id="lblTipoUnidad">
                                         <input type="radio" name="tipo_cantidad" value="UNIDAD" checked class="d-none"
                                                onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantIng()">
-                                        <i class="fas fa-cube me-1"></i>Unidad
+                                        <i class="fas fa-cube me-1"></i><span id="txtTipoUnidad">Unidad</span>
                                     </label>
                                     <label class="btn btn-outline-primary btn-sm rounded-pill" id="lblTipoCaja">
                                         <input type="radio" name="tipo_cantidad" value="CAJA" class="d-none"
                                                onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantIng()">
-                                        <i class="fas fa-box me-1"></i>Caja
+                                        <i class="fas fa-box me-1"></i><span id="txtTipoCaja">Caja</span>
                                     </label>
                                     <label class="btn btn-outline-primary btn-sm rounded-pill" id="lblTipoCajaUnd">
                                         <input type="radio" name="tipo_cantidad" value="CAJA_UND" class="d-none"
                                                onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantIng()">
-                                        <i class="fas fa-box-open me-1"></i>Cajas + Und
+                                        <i class="fas fa-box-open me-1"></i><span id="txtTipoCajaUnd">Cajas + Und</span>
                                     </label>
                                 </div>
                             </div>
@@ -93,7 +94,7 @@
                                 <small class="text-muted" id="ing_info_conversion" style="display:none;"></small>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Fracciones (Und sueltas)</label>
+                                <label class="form-label fw-semibold" id="lblCantFrac">Fracciones (Und sueltas)</label>
                                 <input type="number" class="form-control form-control-lg" name="cantidad_fraccion" id="ing_cant_frac" min="0" value="0">
                             </div>
                             <div class="col-md-6">
@@ -117,7 +118,7 @@
                                 <div id="ing_preview" class="border rounded-3 p-3 bg-light" style="display:none;"></div>
                             </div>
                             <div class="col-12 d-flex gap-2">
-                                <button type="submit" class="btn btn-success px-4"><i class="fas fa-save me-2"></i>Registrar Ingreso</button>
+                                <button type="submit" class="btn btn-success px-4" id="btnGuardarIngreso"><i class="fas fa-save me-2"></i>Registrar Ingreso</button>
                                 <button type="button" class="btn btn-outline-secondary" onclick="resetCrearIngreso()">Limpiar</button>
                             </div>
                         </div>
@@ -261,18 +262,39 @@
                     <div class="alert alert-info mt-2 py-2 d-none" id="fac_prod_sel">
                         <strong id="fac_prod_nombre"></strong><br>
                         <small class="text-muted" id="fac_prod_extra"></small>
+                        <div class="small mt-1" id="fac_prod_config"></div>
                     </div>
                     <div class="row g-2 mt-2" id="fac_prod_cant" style="display:none;">
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold mb-1">Tipo de cantidad</label>
+                            <div class="d-flex gap-2">
+                                <label class="btn btn-outline-primary btn-sm rounded-pill active" id="fac_lbl_unidad">
+                                    <input type="radio" name="fac_tipo_cantidad" value="UNIDAD" checked class="d-none"
+                                           onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantFac()">
+                                    <span id="fac_txt_unidad">Unidades</span>
+                                </label>
+                                <label class="btn btn-outline-primary btn-sm rounded-pill" id="fac_lbl_caja">
+                                    <input type="radio" name="fac_tipo_cantidad" value="CAJA" class="d-none"
+                                           onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantFac()">
+                                    <span id="fac_txt_caja">Cajas</span>
+                                </label>
+                                <label class="btn btn-outline-primary btn-sm rounded-pill" id="fac_lbl_caja_und">
+                                    <input type="radio" name="fac_tipo_cantidad" value="CAJA_UND" class="d-none"
+                                           onchange="$(this).closest('label').addClass('active').siblings().removeClass('active');cambiarTipoCantFac()">
+                                    Cajas + Und
+                                </label>
+                            </div>
+                        </div>
                         <div class="col-4">
-                            <label class="form-label small fw-semibold mb-1">Unidades</label>
+                            <label class="form-label small fw-semibold mb-1" id="fac_lbl_cant_u">Unidades</label>
                             <input type="number" class="form-control" id="fac_cant_u" min="0" value="0">
                         </div>
                         <div class="col-4">
-                            <label class="form-label small fw-semibold mb-1">Fracciones</label>
+                            <label class="form-label small fw-semibold mb-1" id="fac_lbl_cant_f">Fracciones</label>
                             <input type="number" class="form-control" id="fac_cant_f" min="0" value="0">
                         </div>
                         <div class="col-4">
-                            <label class="form-label small fw-semibold mb-1">Precio compra <i class="fas fa-question-circle text-muted" title="Lo que le cobra el proveedor por unidad cerrada (caja)"></i></label>
+                            <label class="form-label small fw-semibold mb-1">Precio compra <i class="fas fa-question-circle text-muted" title="Costo por unidad interna (pastilla, sobre suelto, unidad)"></i></label>
                             <input type="number" class="form-control" id="fac_precio" min="0" step="0.01" placeholder="$ / unidad">
                         </div>
                         <div class="col-12">
@@ -294,8 +316,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Producto</th>
-                                    <th class="text-center">Und</th>
-                                    <th class="text-center">Frac</th>
+                                    <th class="text-center">Unidades</th>
                                     <th class="text-end">V. Compra</th>
                                     <th class="text-end">Inversión</th>
                                     <th></th>
@@ -304,7 +325,7 @@
                             <tbody id="tbodyDetFac"></tbody>
                             <tfoot class="table-light">
                                 <tr>
-                                    <th colspan="4" class="text-end">Totales</th>
+                                    <th colspan="3" class="text-end">Totales</th>
                                     <th class="text-end" id="det_fac_inversion">$0</th>
                                     <th></th>
                                 </tr>
@@ -604,9 +625,34 @@ $('#ing_buscar').on('keyup', function() {
 });
 
 var undPorCajaActual = 1;
+var prodConfigIng = null;
+
+// Texto con la configuración real del producto: caja, nivel intermedio y unidades
+function textoConfigProducto(p) {
+    if (!p) return '';
+    if (p.tipo_venta === 'FRACCION_DECIMAL') {
+        return 'Venta por ' + (p.unidad_medida || 'unidad') + ' (fracción decimal)';
+    }
+    var partes = [];
+    var porCaja = parseInt(p.unidad_cerrada, 10) || 1;
+    var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+    var porIntermedio = parseInt(p.unidades_por_intermedio, 10) || 1;
+    var nombreInter = p.nombre_intermedio || 'nivel';
+    if (porCaja > 1) {
+        partes.push('Caja: ' + porCaja + ' und');
+        if (intermedios > 0) {
+            partes.push(intermedios + ' ' + nombreInter + '(es) × ' + porIntermedio + ' und');
+        }
+    } else {
+        partes.push('Se vende por unidades');
+    }
+    if (parseInt(p.fraccion, 10) > 0) partes.push('Permite unidades sueltas');
+    return partes.join(' · ');
+}
 
 function cambiarTipoCantIng() {
     var tipo = $('input[name="tipo_cantidad"]:checked').val();
+    var porCaja = undPorCajaActual;
     if (tipo === 'CAJA' || tipo === 'CAJA_UND') {
         $('#lblCantUnd').text(tipo === 'CAJA' ? 'Cantidad Cajas' : 'Cajas');
         $('#ing_cant_frac').prop('disabled', tipo === 'CAJA').val(0);
@@ -645,10 +691,41 @@ function seleccionarProductoIng(id, nombre, codigo) {
     $('#ing_resultados').hide();
     $('#ing_buscar').val(nombre);
     $('#ing_btn_historial').show();
-    // Obtener unidad_cerrada del producto
+    $('#ing_bloque_cantidad').show();
+    // Traer la configuración real del producto (caja, nivel intermedio, unidades)
     $.getJSON(BASE_URL + '/productos/obtener/' + id, function(r) {
         if (r.success && r.data) {
-            undPorCajaActual = parseInt(r.data.unidad_cerrada) || 1;
+            var p = r.data;
+            prodConfigIng = p;
+            undPorCajaActual = parseInt(p.unidad_cerrada) || 1;
+            $('#ing_prod_config').html('<i class="fas fa-boxes me-1"></i>' + escHtml(textoConfigProducto(p)));
+
+            var porCaja = undPorCajaActual;
+            var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+            var porIntermedio = parseInt(p.unidades_por_intermedio, 10) || 1;
+            var nombreInter = p.nombre_intermedio || 'nivel';
+
+            // Etiquetas según cómo se vende el producto
+            $('#txtTipoUnidad').text(porCaja > 1 ? 'Unidad interna' : 'Unidad');
+            $('#txtTipoCaja').text('Caja (' + porCaja + ' und)');
+            $('#txtTipoCajaUnd').text('Cajas + Und');
+            $('#lblTipoCaja').toggle(porCaja > 1);
+            $('#lblTipoCajaUnd').toggle(porCaja > 1 && parseInt(p.fraccion, 10) > 0);
+
+            if (porCaja > 1) {
+                var detalle = p.descripcion || '';
+                if (intermedios > 0) {
+                    detalle += ' — 1 caja = ' + intermedios + ' ' + nombreInter + '(es) × ' + porIntermedio + ' und = ' + (intermedios * porIntermedio) + ' und';
+                }
+                $('#ing_prod_config').append('<br><small class="text-muted">' + escHtml(detalle) + '</small>');
+            }
+
+            // Si el producto no tiene caja, se fuerza el modo unidad
+            if (porCaja <= 1) {
+                $('input[name="tipo_cantidad"][value="UNIDAD"]').prop('checked', true).trigger('change');
+            }
+            $('#lblCantFrac').text(porCaja > 1 ? 'Fracciones (Und sueltas)' : 'Fracciones');
+            cambiarTipoCantIng();
             actualizarInfoConversion();
             $('#ing_info_conversion').show();
         }
@@ -738,6 +815,12 @@ $('#formIngreso').on('submit', function(e) {
         PNotify.error({ text: 'Debe ingresar al menos una cantidad' }); return;
     }
     if (!data.valor_compra || parseFloat(data.valor_compra) <= 0) { delete data.valor_compra; }
+
+    // Evita registrar el mismo ingreso dos veces (doble clic o Enter repetido)
+    var $btn = $('#btnGuardarIngreso');
+    if ($btn.prop('disabled')) return;
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Guardando...');
+
     $.ajax({
         url: BASE_URL + '/ingresos/guardar', method: 'POST', contentType: 'application/json',
         data: JSON.stringify(data),
@@ -749,7 +832,10 @@ $('#formIngreso').on('submit', function(e) {
                 PNotify.success({ text: r.message });
             } else { PNotify.error({ text: r.message }); }
         },
-        error: function(xhr) { PNotify.error({ text: xhr.responseJSON?.message || 'Error' }); }
+        error: function(xhr) { PNotify.error({ text: xhr.responseJSON?.message || 'Error' }); },
+        complete: function() {
+            $btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i>Registrar Ingreso');
+        }
     });
 });
 
@@ -757,12 +843,17 @@ function resetCrearIngreso() {
     $('#formIngreso')[0].reset();
     $('#ing_id_producto').val('');
     $('#ing_producto_seleccionado').addClass('d-none');
+    $('#ing_prod_config').html('');
+    $('#ing_bloque_cantidad').hide();
     $('#ing_resultados').hide();
     $('#ing_info_conversion').hide();
     $('#lblCantUnd').text('Cantidad Unidades');
+    $('#lblCantFrac').text('Fracciones (Und sueltas)');
     $('#ing_preview').hide().html('');
     $('#ing_btn_historial').hide();
+    $('#lblTipoCaja, #lblTipoCajaUnd').hide();
     undPorCajaActual = 1;
+    prodConfigIng = null;
 }
 
 // ===== INGRESO RÁPIDO =====
@@ -1035,6 +1126,7 @@ function pintarDetalleFac() {
         $.each(detalleFac, function(i, d) {
             var cantU = parseInt(d.cantidad_unidad) || 0;
             var cantF = parseInt(d.cantidad_fraccion) || 0;
+            var porCaja = parseInt(d.unidad_cerrada, 10) || 1;
             // Precio REAL de esta factura; si la linea no lo trae, se muestra el costo actual del producto
             var valor = parseFloat(d.precio_compra) || 0;
             var costoActual = parseFloat(d.costo_promedio) || 0;
@@ -1043,6 +1135,18 @@ function pintarDetalleFac() {
 
             var subtotal = cantU * valor;
             inversion += subtotal;
+
+            // Desglose en cajas + sueltas para que se entienda qué entra al inventario
+            var textoCant = cantU + ' und';
+            if (porCaja > 1 && cantU >= porCaja) {
+                var cajas = Math.floor(cantU / porCaja);
+                var resto = cantU % porCaja;
+                textoCant = cajas + ' caja(s)';
+                if (resto > 0) textoCant += ' + ' + resto + ' und';
+                textoCant += '<br><small class="text-muted">' + cantU + ' und internas</small>';
+            } else if (cantF > 0) {
+                textoCant += ' + ' + cantF + ' frac';
+            }
 
             // Aviso si el precio de la factura cambia respecto al costo que tiene el producto hoy
             var aviso = '';
@@ -1054,8 +1158,7 @@ function pintarDetalleFac() {
 
             html += '<tr>' +
                 '<td><strong>' + escHtml(d.descripcion) + '</strong><br><small class="text-muted">' + escHtml(d.codigo) + '</small></td>' +
-                '<td class="text-center">' + cantU + '</td>' +
-                '<td class="text-center">' + cantF + '</td>' +
+                '<td class="text-center">' + textoCant + '</td>' +
                 '<td class="text-end">$' + formatoNumero(valor) + aviso + '</td>' +
                 '<td class="text-end">$' + formatoNumero(subtotal) + '</td>' +
                 '<td class="text-center"><button class="btn btn-sm btn-outline-danger" onclick="quitarProductoFactura(' + d.id_detalle + ')" title="Quitar"><i class="fas fa-times"></i></button></td>' +
@@ -1086,7 +1189,7 @@ function buscarProductoFactura() {
 }
 
 function elegirProductoFactura(id, nombre, codigo, valorCompra) {
-    facProdSel = { id: id, nombre: nombre, codigo: codigo, costoActual: valorCompra };
+    facProdSel = { id: id, nombre: nombre, codigo: codigo, costoActual: valorCompra, porCaja: 1 };
     $('#fac_prod_resultados').hide();
     $('#fac_prod_buscar').val(nombre);
     $('#fac_prod_nombre').text(nombre);
@@ -1097,6 +1200,46 @@ function elegirProductoFactura(id, nombre, codigo, valorCompra) {
     $('#fac_cant_f').val(0);
     // Se precarga el costo actual; el usuario lo cambia si el proveedor cobró otro precio
     $('#fac_precio').val(valorCompra > 0 ? valorCompra : '');
+
+    // Configuración real del producto: caja, nivel intermedio y unidades sueltas
+    $.getJSON(BASE_URL + '/productos/obtener/' + id, function(r) {
+        if (!r.success || !r.data) return;
+        var p = r.data;
+        var porCaja = parseInt(p.unidad_cerrada, 10) || 1;
+        facProdSel.porCaja = porCaja;
+        facProdSel.config = p;
+
+        $('#fac_prod_config').html('<i class="fas fa-boxes me-1"></i>' + escHtml(textoConfigProducto(p)));
+        $('#fac_txt_unidad').text(porCaja > 1 ? 'Unidades internas' : 'Unidades');
+        $('#fac_txt_caja').text('Cajas (' + porCaja + ' und)');
+        $('#fac_lbl_caja').toggle(porCaja > 1);
+        $('#fac_lbl_caja_und').toggle(porCaja > 1 && parseInt(p.fraccion, 10) > 0);
+
+        if (porCaja <= 1) {
+            $('input[name="fac_tipo_cantidad"][value="UNIDAD"]').prop('checked', true);
+            $('#fac_lbl_unidad').addClass('active').siblings().removeClass('active');
+        }
+        cambiarTipoCantFac();
+    });
+
+    actualizarInfoPrecioFactura();
+}
+
+// Cambia las etiquetas del formulario según el tipo de cantidad elegido
+function cambiarTipoCantFac() {
+    var tipo = $('input[name="fac_tipo_cantidad"]:checked').val() || 'UNIDAD';
+    var porCaja = (facProdSel && facProdSel.porCaja) || 1;
+    if (tipo === 'CAJA') {
+        $('#fac_lbl_cant_u').text('Cantidad Cajas');
+        $('#fac_lbl_cant_f').text('—').closest('.col-4').hide();
+        $('#fac_cant_f').val(0);
+    } else if (tipo === 'CAJA_UND') {
+        $('#fac_lbl_cant_u').text('Cajas');
+        $('#fac_lbl_cant_f').text('Und sueltas').closest('.col-4').show();
+    } else {
+        $('#fac_lbl_cant_u').text('Unidades');
+        $('#fac_lbl_cant_f').text('Fracciones').closest('.col-4').show();
+    }
     actualizarInfoPrecioFactura();
 }
 
@@ -1105,14 +1248,26 @@ function actualizarInfoPrecioFactura() {
     var precio = parseFloat($('#fac_precio').val()) || 0;
     var cu = parseInt($('#fac_cant_u').val()) || 0;
     var cf = parseInt($('#fac_cant_f').val()) || 0;
+    var tipo = $('input[name="fac_tipo_cantidad"]:checked').val() || 'UNIDAD';
+    var porCaja = facProdSel.porCaja || 1;
+
+    // Unidades internas que realmente entran al inventario
+    var unidades = cu;
+    if (tipo === 'CAJA' || tipo === 'CAJA_UND') {
+        unidades = (cu * porCaja) + (tipo === 'CAJA_UND' ? cf : 0);
+    } else {
+        unidades = cu + cf;
+    }
 
     if (precio <= 0) {
         $('#fac_precio_info').html('<i class="fas fa-info-circle me-1"></i>Sin precio: se usará el costo promedio actual ($' + formatoNumero(facProdSel.costoActual) + ')');
         return;
     }
 
-    var texto = 'Total: ' + cu + ' und × $' + formatoNumero(precio) + ' = <strong>$' + formatoNumero(cu * precio) + '</strong>';
-    if (cf > 0) texto += ' <span class="text-muted">(+ ' + cf + ' fracciones, sin costo asignado)</span>';
+    var texto = 'Entran <strong>' + unidades + ' unidad(es) interna(s)</strong> × $' + formatoNumero(precio) + ' = <strong>$' + formatoNumero(unidades * precio) + '</strong>';
+    if (tipo === 'CAJA' || tipo === 'CAJA_UND') {
+        texto += '<br><small class="text-muted">' + cu + ' caja(s) × ' + porCaja + ' und' + (tipo === 'CAJA_UND' && cf > 0 ? ' + ' + cf + ' sueltas' : '') + '</small>';
+    }
     if (facProdSel.costoActual > 0 && Math.abs(precio - facProdSel.costoActual) >= 0.01) {
         texto += '<br><i class="fas fa-exclamation-triangle text-warning me-1"></i>Distinto al costo actual ($' + formatoNumero(facProdSel.costoActual) + '): al pasar la factura a inventario se recalculará el promedio.';
     }
@@ -1128,6 +1283,7 @@ function agregarProductoFactura() {
     var cu = parseInt($('#fac_cant_u').val()) || 0;
     var cf = parseInt($('#fac_cant_f').val()) || 0;
     var precio = parseFloat($('#fac_precio').val()) || 0;
+    var tipoCantidad = $('input[name="fac_tipo_cantidad"]:checked').val() || 'UNIDAD';
     if (cu <= 0 && cf <= 0) { PNotify.error({ text: 'Ingrese al menos una cantidad' }); return; }
 
     $.ajax({
@@ -1137,6 +1293,7 @@ function agregarProductoFactura() {
             id_producto: facProdSel.id,
             cantidad_unidad: cu,
             cantidad_fraccion: cf,
+            tipo_cantidad: tipoCantidad,
             valor_compra: precio > 0 ? precio : null
         }),
         success: function(r) {
@@ -1148,6 +1305,8 @@ function agregarProductoFactura() {
                 $('#fac_prod_buscar').val('');
                 $('#fac_precio').val('');
                 $('#fac_precio_info').text('');
+                $('#fac_cant_u').val(0);
+                $('#fac_cant_f').val(0);
                 seleccionarFactura(facActual.id_ingreso_factura);
             } else { PNotify.error({ text: r.message }); }
         },

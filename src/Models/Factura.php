@@ -198,6 +198,12 @@ class Factura
                     : (float)$det['precio_unitario'];
                 $det['valor_unidad'] = $precioInterno;
 
+                // valor_compra es el costo de UNA unidad interna. La caja y el nivel
+                // intermedio agrupan unidades, así que su costo se multiplica.
+                $costoUnidad = (float)$producto['valor_compra'];
+                $porCajaCosto = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+                $porIntermedioCosto = max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+
                 if ($tipoVenta === 'FRACCION_DECIMAL') {
                     // Venta por fracción decimal: precio * cantidad decimal
                     $cantDec = (float)($det['cantidad_decimal'] ?? 0);
@@ -208,7 +214,7 @@ class Factura
                     $det['cantidad_fraccion'] = 0;
                     $det['cantidad_intermedia'] = 0;
                     $det['subtotal'] = $det['precio_unitario'] * $cantDec;
-                    $det['ganancia'] = ($det['precio_unitario'] - (float)$producto['valor_compra']) * $cantDec;
+                    $det['ganancia'] = ($det['precio_unitario'] - $costoUnidad) * $cantDec;
                 } else {
                     // Cajas a precio de caja, nivel intermedio a su precio y unidades mínimas a su precio
                     $cantUnd = max(0, (int)($det['cantidad_unidad'] ?? 0));
@@ -234,15 +240,15 @@ class Factura
                     }
 
                     // Costo de cada presentación: la caja y el nivel intermedio agrupan unidades mínimas
-                    $costoCaja = (float)$producto['valor_compra'] * $porCaja;
-                    $costoIntermedio = (float)$producto['valor_compra'] * $porIntermedio;
+                    $costoCaja = $costoUnidad * $porCajaCosto;
+                    $costoIntermedio = $costoUnidad * $porIntermedioCosto;
 
                     $det['subtotal'] = ($cantUnd * (float)$det['precio_unitario'])
                         + ($cantInter * $precioIntermedio)
                         + ($cantFrac * $precioInterno);
                     $det['ganancia'] = ($cantUnd * ((float)$det['precio_unitario'] - $costoCaja))
                         + ($cantInter * ($precioIntermedio - $costoIntermedio))
-                        + ($cantFrac * ($precioInterno - (float)$producto['valor_compra']));
+                        + ($cantFrac * ($precioInterno - $costoUnidad));
                 }
 
                 // Unidades mínimas que realmente salen del inventario. Vender un
@@ -270,6 +276,8 @@ class Factura
             $total = $subtotal + $totalIva;
             $descuento = (float)($data['descuento'] ?? 0);
             $totalPagar = $total - $descuento;
+            // El descuento sale de la ganancia: si no, el reporte muestra más utilidad de la real
+            $totalGanancia -= $descuento;
 
             // Pagos fraccionados: el cliente puede pagar con varias formas
             $infoPagos    = $this->procesarPagos($data, $totalPagar, $ventaCredito);

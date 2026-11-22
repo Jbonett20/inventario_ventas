@@ -338,34 +338,65 @@ function abrirDevolucion(idFactura) {
         if (!r.success) { $('#detalleDevolucion').html('<p class="text-danger">Error al cargar factura</p>'); return; }
         var f = r.data;
         var html = '<div class="mb-3"><strong>Factura #' + f.codigo + '</strong> - ' + f.fecha + ' - ' + escHtml(f.cliente_nombre) + '</div>' +
-            '<table class="table table-sm table-bordered"><thead><tr><th>Producto</th><th style="width:80px">Facturado</th><th style="width:80px">Devolver</th><th style="width:100px">Valor Und.</th><th style="width:100px">Subtotal</th></tr></thead><tbody>';
+            '<table class="table table-sm table-bordered"><thead><tr><th>Producto</th><th style="width:90px">Facturado</th><th style="width:170px">Devolver</th><th style="width:100px">Valor Und.</th><th style="width:100px">Subtotal</th></tr></thead><tbody>';
         $.each(f.detalles, function(i, det) {
-            // Usar cantidad restante (considerando devoluciones previas)
-            var maxU = parseInt(det.restante_unidad) || parseInt(det.cantidad_unidad) || 0;
-            var maxF = parseInt(det.restante_fraccion) || parseInt(det.cantidad_fraccion) || 0;
+            // Cantidades restantes por devolver (descontando devoluciones previas)
+            var maxU = parseInt(det.restante_unidad) || 0;
+            var maxI = parseInt(det.restante_intermedia) || 0;
+            var maxF = parseInt(det.restante_fraccion) || 0;
             var factU = parseInt(det.cantidad_unidad) || 0;
+            var factI = parseInt(det.cantidad_intermedia) || 0;
             var factF = parseInt(det.cantidad_fraccion) || 0;
             var esFraccionable = parseInt(det.fraccion) > 0;
-            if (maxU <= 0 && maxF <= 0) {
+            var porCaja = parseInt(det.unidad_cerrada, 10) || 1;
+            var tieneIntermedio = factI > 0 || ((parseInt(det.unidades_intermedias, 10) || 0) > 0 && (parseFloat(det.valor_intermedio) || 0) > 0);
+            var nombreInter = det.nombre_intermedio || 'nivel';
+
+            // Texto de lo facturado según los niveles que realmente se usaron
+            var factTexto = [];
+            if (factU > 0) factTexto.push(factU + ' cja');
+            if (factI > 0) factTexto.push(factI + ' ' + escHtml(nombreInter) + '(es)');
+            if (factF > 0) factTexto.push(factF + ' und');
+            if (!factTexto.length) factTexto.push('0');
+
+            if (maxU <= 0 && maxI <= 0 && maxF <= 0) {
                 html += '<tr class="text-muted">' +
                     '<td>' + escHtml(det.descripcion) + ' <span class="badge bg-secondary">Ya devuelto</span></td>' +
-                    '<td class="text-center">' + factU + (esFraccionable ? ' cja + ' + factF + ' und' : '') + '</td>' +
+                    '<td class="text-center">' + factTexto.join(' + ') + '</td>' +
                     '<td class="text-center text-muted small">Completamente devuelto</td>' +
                     '<td></td><td></td></tr>';
                 return;
             }
+
+            // Inputs solo de los niveles que la factura usó y que aún tienen saldo
+            var inputs = [];
+            if (porCaja > 1 && maxU > 0) {
+                inputs.push('<input type="number" class="form-control form-control-sm cant-dev-und" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxU + '" min="0" max="' + maxU + '" value="' + maxU + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Cj" title="Cajas">');
+            }
+            if (tieneIntermedio && maxI > 0) {
+                inputs.push('<input type="number" class="form-control form-control-sm cant-dev-inter" data-idprod="' + det.id_producto + '" data-valor="' + (det.valor_intermedio||0) + '" data-max="' + maxI + '" min="0" max="' + maxI + '" value="' + maxI + '" onchange="calcularTotalDev()" style="width:60px" placeholder="' + escHtml(nombreInter.substring(0, 4)) + '" title="' + escHtml(nombreInter) + '(es)">');
+            }
+            if (esFraccionable && maxF > 0) {
+                inputs.push('<input type="number" class="form-control form-control-sm cant-dev-frac" data-idprod="' + det.id_producto + '" data-valor="' + (det.valor_unidad||det.precio_unitario||0) + '" data-max="' + maxF + '" min="0" max="' + maxF + '" value="' + maxF + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Und" title="Unidades sueltas">');
+            }
+            // Producto que se vende solo por unidades (sin caja ni nivel intermedio)
+            if (!inputs.length) {
+                inputs.push('<input type="number" class="form-control form-control-sm cant-dev-frac" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxF + '" min="0" max="' + maxF + '" value="' + maxF + '" onchange="calcularTotalDev()">');
+            }
+
+            var restan = [];
+            if (maxU > 0 && porCaja > 1) restan.push(maxU + ' cja(s)');
+            if (maxI > 0) restan.push(maxI + ' ' + escHtml(nombreInter) + '(es)');
+            if (maxF > 0) restan.push(maxF + ' und');
+
             html += '<tr>' +
-                '<td>' + escHtml(det.descripcion) + (esFraccionable && maxF > 0 ? '<br><small class="text-muted">Restan: ' + maxU + ' cja(s), ' + maxF + ' und</small>' : '') + '</td>' +
-                '<td class="text-center">' + factU + (esFraccionable ? ' cja + ' + factF + ' und' : '') + '</td>' +
-                '<td>' +
-                    (esFraccionable ?
-                        '<div class="d-flex gap-1"><input type="number" class="form-control form-control-sm cant-dev-und" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxU + '" min="0" max="' + maxU + '" value="' + maxU + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Cj">' +
-                        '<input type="number" class="form-control form-control-sm cant-dev-frac" data-idprod="' + det.id_producto + '" data-valor="' + (det.valor_unidad||det.precio_unitario||0) + '" data-max="' + maxF + '" min="0" max="' + maxF + '" value="' + maxF + '" onchange="calcularTotalDev()" style="width:60px" placeholder="Und"></div>' :
-                        '<input type="number" class="form-control form-control-sm cant-dev-und" data-idprod="' + det.id_producto + '" data-valor="' + (det.precio_unitario||0) + '" data-max="' + maxU + '" min="0" max="' + maxU + '" value="' + maxU + '" onchange="calcularTotalDev()">'
-                    ) +
-                '</td>' +
-                '<td class="text-end">$' + formatoNumero(det.precio_unitario) + (esFraccionable && det.valor_unidad ? '<br><small class="text-muted">Und: $' + formatoNumero(det.valor_unidad) + '</small>' : '') + '</td>' +
-                '<td class="text-end"><span class="subtot-dev" data-idprod="' + det.id_producto + '">$' + formatoNumero((maxU * (det.precio_unitario||0)) + (maxF * (det.valor_unidad||det.precio_unitario||0))) + '</span></td></tr>';
+                '<td>' + escHtml(det.descripcion) + (restan.length ? '<br><small class="text-muted">Restan: ' + restan.join(', ') + '</small>' : '') + '</td>' +
+                '<td class="text-center">' + factTexto.join(' + ') + '</td>' +
+                '<td><div class="d-flex gap-1">' + inputs.join('') + '</div></td>' +
+                '<td class="text-end">$' + formatoNumero(det.precio_unitario) +
+                    (det.valor_intermedio > 0 ? '<br><small class="text-muted">' + escHtml(nombreInter) + ': $' + formatoNumero(det.valor_intermedio) + '</small>' : '') +
+                    (esFraccionable && det.valor_unidad ? '<br><small class="text-muted">Und: $' + formatoNumero(det.valor_unidad) + '</small>' : '') + '</td>' +
+                '<td class="text-end"><span class="subtot-dev" data-idprod="' + det.id_producto + '">$' + formatoNumero((maxU * (det.precio_unitario||0)) + (maxI * (det.valor_intermedio||0)) + (maxF * (det.valor_unidad||det.precio_unitario||0))) + '</span></td></tr>';
         });
         html += '</tbody></table>' +
             '<div class="d-flex justify-content-between align-items-center">' +
@@ -470,30 +501,25 @@ function refrescarPagosDev() {
 
 function calcularTotalDev() {
     var total = 0;
-    // Calcular por cada producto (unidades)
-    $('.cant-dev-und').each(function() {
-        var cant = parseInt($(this).val()) || 0;
-        var valor = parseFloat($(this).data('valor')) || 0;
-        var max = parseInt($(this).data('max')) || 0;
-        if (cant > max) { $(this).val(max); cant = max; }
-        var idProd = $(this).data('idprod');
-        // Encontrar la fracción correspondiente
-        var cantF = 0;
-        var valorF = 0;
-        $('.cant-dev-frac[data-idprod="' + idProd + '"]').each(function() {
-            cantF = parseInt($(this).val()) || 0;
-            valorF = parseFloat($(this).data('valor')) || 0;
-            var maxF = parseInt($(this).data('max')) || 0;
-            if (cantF > maxF) { $(this).val(maxF); cantF = maxF; }
-        });
-        var sub = (cant * valor) + (cantF * valorF);
-        total += sub;
-        $('.subtot-dev[data-idprod="' + idProd + '"]').text('$' + formatoNumero(sub));
+    var productos = {};
+
+    // Se recorren los tres niveles: cajas, nivel intermedio (sobres) y unidades sueltas
+    $('.cant-dev-und, .cant-dev-inter, .cant-dev-frac').each(function() {
+        var el = $(this);
+        var cant = parseInt(el.val(), 10) || 0;
+        var max = parseInt(el.data('max'), 10) || 0;
+        if (cant > max) { el.val(max); cant = max; }
+        if (cant < 0) { el.val(0); cant = 0; }
+        var idProd = el.data('idprod');
+        if (!productos[idProd]) productos[idProd] = { total: 0 };
+        productos[idProd].total += cant * (parseFloat(el.data('valor')) || 0);
+        total += cant * (parseFloat(el.data('valor')) || 0);
     });
-    // Productos sin fracción (solo unidad)
-    $('.cant-dev-und').not('[data-idprod]').each(function() {
-        // Ya procesados arriba
+
+    $.each(productos, function(idProd, p) {
+        $('.subtot-dev[data-idprod="' + idProd + '"]').text('$' + formatoNumero(p.total));
     });
+
     $('#totalDev').text('$' + formatoNumero(total));
 
     // Si ya eligió una sola forma de devolución, se ajusta al nuevo total
@@ -506,24 +532,25 @@ function calcularTotalDev() {
 function procesarDevolucion() {
     var detalles = [];
     var productosProcesados = {};
-    $('.cant-dev-und').each(function() {
+    $('.cant-dev-und, .cant-dev-inter, .cant-dev-frac').each(function() {
         var idProd = $(this).data('idprod');
-        var cantU = parseInt($(this).val()) || 0;
-        var cantF = 0;
-        $('.cant-dev-frac[data-idprod="' + idProd + '"]').each(function() {
-            cantF = parseInt($(this).val()) || 0;
-        });
-        if (cantU > 0 || cantF > 0) {
-            if (!productosProcesados[idProd]) {
-                detalles.push({
-                    id_producto: idProd,
-                    cantidad_unidad: cantU,
-                    cantidad_fraccion: cantF,
-                    valor_unitario: parseFloat($(this).data('valor')) || 0,
-                    valor_unidad: parseFloat($('.cant-dev-frac[data-idprod="' + idProd + '"]').data('valor')) || 0
-                });
-                productosProcesados[idProd] = true;
-            }
+        if (productosProcesados[idProd]) return;
+
+        var cantU = parseInt($('.cant-dev-und[data-idprod="' + idProd + '"]').val(), 10) || 0;
+        var cantI = parseInt($('.cant-dev-inter[data-idprod="' + idProd + '"]').val(), 10) || 0;
+        var cantF = parseInt($('.cant-dev-frac[data-idprod="' + idProd + '"]').val(), 10) || 0;
+
+        if (cantU > 0 || cantI > 0 || cantF > 0) {
+            detalles.push({
+                id_producto: idProd,
+                cantidad_unidad: cantU,
+                cantidad_intermedia: cantI,
+                cantidad_fraccion: cantF,
+                valor_unitario: parseFloat($('.cant-dev-und[data-idprod="' + idProd + '"]').data('valor')) || 0,
+                valor_intermedio: parseFloat($('.cant-dev-inter[data-idprod="' + idProd + '"]').data('valor')) || 0,
+                valor_unidad: parseFloat($('.cant-dev-frac[data-idprod="' + idProd + '"]').data('valor')) || 0
+            });
+            productosProcesados[idProd] = true;
         }
     });
     var motivo = $('#motivoDev').val().trim();
