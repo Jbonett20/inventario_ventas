@@ -97,6 +97,9 @@ class PlanSepareController
         $db = \SIG\Core\Database::getInstance();
         $productos = $db->select(
             "SELECT p.id_producto, p.codigo, p.descripcion, p.valor_venta, p.codigo_barras_1,
+                    p.valor_unidad, p.valor_intermedio, p.tipo_venta, p.unidad_medida,
+                    p.unidad_cerrada, p.fraccion, p.unidades_intermedias,
+                    p.unidades_por_intermedio, p.nombre_intermedio,
                     COALESCE(i.unidad, 0) AS stock
              FROM vb_productos p
              LEFT JOIN vb_inventario i ON p.id_producto = i.id_producto

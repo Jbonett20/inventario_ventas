@@ -40,7 +40,7 @@ class PlanSepare
      *
      * @param array $d Datos del plan (id_cliente, valor_total, valor_inicial, fecha_inicio, fecha_fin, detalles[])
      *        $d['detalles'] = [
-     *            ['id_producto' => 1, 'cantidad' => 2, 'valor_unitario' => 5000, 'descripcion' => ''],
+     *            ['id_producto' => 1, 'cantidad' => 2, 'valor_unitario' => 5000, 'tipo_venta' => 'CAJA'],
      *            ...
      *        ]
      */
@@ -77,20 +77,31 @@ class PlanSepare
             if (!empty($d['detalles']) && is_array($d['detalles'])) {
                 $sumaDetalle = 0;
                 foreach ($d['detalles'] as $det) {
-                    $cantidad = (int)($det['cantidad'] ?? 1);
+                    $cantidad = (float)($det['cantidad'] ?? 1);
+                    if ($cantidad <= 0) {
+                        throw new \InvalidArgumentException('La cantidad de cada producto debe ser mayor a cero');
+                    }
                     $valorUnitario = (float)($det['valor_unitario'] ?? 0);
                     $subtotal = $cantidad * $valorUnitario;
                     $sumaDetalle += $subtotal;
 
+                    $linea = $this->resolverFormaVenta($det);
+                    $tipoVenta = $linea['tipo_venta'];
+                    // La fraccion decimal se guarda con decimales; las demás formas son enteras
+                    $cantidadGuardar = $tipoVenta === 'FRACCION_DECIMAL' ? round($cantidad, 4) : (int)$cantidad;
+
                     $this->db->insert(
-                        "INSERT INTO vb_plan_separe_detalle (id_plan_separe, id_producto, cantidad, valor_unitario, subtotal)
-                         VALUES (:idps, :idp, :cant, :vu, :sub)",
+                        "INSERT INTO vb_plan_separe_detalle
+                            (id_plan_separe, id_producto, cantidad, tipo_venta, valor_unitario, subtotal, unidades_inventario)
+                         VALUES (:idps, :idp, :cant, :tv, :vu, :sub, :ui)",
                         [
                             'idps' => $id,
                             'idp'  => !empty($det['id_producto']) ? (int)$det['id_producto'] : null,
-                            'cant' => $cantidad,
+                            'cant' => $cantidadGuardar,
+                            'tv'   => $tipoVenta,
                             'vu'   => $valorUnitario,
                             'sub'  => $subtotal,
+                            'ui'   => round($cantidad * $linea['unidades_por_presentacion'], 4),
                         ]
                     );
                 }
@@ -111,6 +122,71 @@ class PlanSepare
             $this->db->rollback();
             throw $e;
         }
+    }
+
+    /**
+     * Resolver la forma de venta de un detalle del plan separe.
+     *
+     * Si el detalle ya trae tipo_venta se respeta; si no, se deduce de la
+     * configuración del producto (unidad, caja, nivel intermedio o fracción
+     * decimal) y se usan los precios guardados en el producto.
+     *
+     * @param array<string, mixed> $det
+     * @return array{tipo_venta: string, unidades_por_presentacion: float}
+     */
+    private function resolverFormaVenta(array $det): array
+    {
+        $tipoSolicitado = strtoupper(trim((string)($det['tipo_venta'] ?? '')));
+        $producto = null;
+        if (!empty($det['id_producto'])) {
+            $producto = $this->db->fetchOne(
+                "SELECT tipo_venta, unidad_cerrada, fraccion, unidades_intermedias,
+                        unidades_por_intermedio, valor_unidad, valor_venta, valor_intermedio
+                 FROM vb_productos WHERE id_producto = :id",
+                ['id' => (int)$det['id_producto']]
+            );
+        }
+
+        $porCaja = max(1, (int)($producto['unidad_cerrada'] ?? 1));
+        $intermedios = max(0, (int)($producto['unidades_intermedias'] ?? 0));
+        $porIntermedio = max(1, (int)($producto['unidades_por_intermedio'] ?? 1));
+        $tieneIntermedio = $intermedios > 0 && (float)($producto['valor_intermedio'] ?? 0) > 0;
+        $esDecimal = ($producto['tipo_venta'] ?? 'UNIDAD') === 'FRACCION_DECIMAL';
+
+        if ($tipoSolicitado === '') {
+            if ($esDecimal) {
+                $tipoSolicitado = 'FRACCION_DECIMAL';
+            } elseif ($porCaja <= 1) {
+                $tipoSolicitado = 'UNIDAD';
+            } elseif ($tieneIntermedio) {
+                $tipoSolicitado = 'CAJA_INTERMEDIO';
+            } else {
+                $tipoSolicitado = (int)($producto['fraccion'] ?? 0) > 0 ? 'CAJA_UNIDAD' : 'CAJA';
+            }
+        }
+        if ($tipoSolicitado === 'FRACCION_DECIMAL' && !$esDecimal) {
+            $tipoSolicitado = 'UNIDAD';
+        }
+
+        switch ($tipoSolicitado) {
+            case 'FRACCION_DECIMAL':
+                $unidades = 1.0;
+                break;
+            case 'CAJA':
+            case 'CAJA_UNIDAD':
+                $unidades = (float)$porCaja;
+                break;
+            case 'CAJA_INTERMEDIO':
+                $unidades = (float)($intermedios * $porIntermedio);
+                break;
+            default:
+                $unidades = 1.0;
+        }
+
+        return [
+            'tipo_venta'                => $tipoSolicitado,
+            'unidades_por_presentacion' => max(1.0, $unidades),
+        ];
     }
 
     /**
@@ -216,7 +292,9 @@ class PlanSepare
         if (!$plan) return null;
 
         $plan['detalles'] = $this->db->select(
-            "SELECT d.*, p.descripcion, p.codigo, p.codigo_barras_1
+            "SELECT d.*, p.descripcion, p.codigo, p.codigo_barras_1,
+                    p.unidad_medida, p.nombre_intermedio, p.unidad_cerrada,
+                    p.unidades_intermedias, p.unidades_por_intermedio
              FROM vb_plan_separe_detalle d
              LEFT JOIN vb_productos p ON d.id_producto = p.id_producto
              WHERE d.id_plan_separe = :id

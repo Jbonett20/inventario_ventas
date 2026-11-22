@@ -88,10 +88,10 @@
                             <div class="table-responsive">
                                 <table class="table table-sm table-hover align-middle mb-0">
                                     <thead class="table-light">
-                                        <tr><th>Código</th><th>Producto</th><th class="text-center">Cant.</th><th class="text-end">V.Unitario</th><th class="text-end">Subtotal</th><th class="text-center"></th></tr>
+                                        <tr><th>Código</th><th>Producto</th><th>Forma de venta</th><th class="text-center">Cant.</th><th class="text-end">V.Unitario</th><th class="text-end">Subtotal</th><th class="text-center"></th></tr>
                                     </thead>
                                     <tbody id="ps_tbody_detalle">
-                                        <tr id="ps_sin_productos"><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-box-open me-1"></i>Agregue productos al plan separe</td></tr>
+                                        <tr id="ps_sin_productos"><td colspan="7" class="text-center text-muted py-3"><i class="fas fa-box-open me-1"></i>Agregue productos al plan separe</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -133,7 +133,7 @@
                 </div>
                 <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>Guardar Plan Separe</button>
+                    <button type="submit" class="btn btn-primary px-4" id="ps_btn_guardar"><i class="fas fa-save me-2"></i>Guardar Plan Separe</button>
                 </div>
             </form>
         </div>
@@ -153,10 +153,10 @@
                 <div class="table-responsive">
                     <table class="table table-sm table-hover">
                         <thead class="table-light">
-                            <tr><th>Código</th><th>Producto</th><th class="text-center">Cant.</th><th class="text-end">V.Unitario</th><th class="text-end">Subtotal</th></tr>
+                            <tr><th>Código</th><th>Producto</th><th>Forma de venta</th><th class="text-center">Cant.</th><th class="text-end">V.Unitario</th><th class="text-end">Subtotal</th></tr>
                         </thead>
                         <tbody id="vp_tbody">
-                            <tr><td colspan="5" class="text-center py-3 text-muted">Sin productos</td></tr>
+                            <tr><td colspan="6" class="text-center py-3 text-muted">Sin productos</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -290,28 +290,83 @@ function cargarClientesSelect() {
 
 // ===== GESTIÓN DE PRODUCTOS EN EL MODAL =====
 var psDetalles = [];
+var psResultados = [];
 
-function psAgregarProducto(id, codigo, descripcion, precio, stock) {
-    // Verificar si ya existe
+// Formas de venta disponibles para un producto según su configuración:
+// UNIDAD | CAJA | CAJA_UNIDAD | CAJA_INTERMEDIO | FRACCION_DECIMAL
+function psFormasVenta(p) {
+    if (p.tipo_venta === 'FRACCION_DECIMAL') {
+        return [{ tipo: 'FRACCION_DECIMAL', etiqueta: 'Por ' + (p.unidad_medida || 'unidad'), precio: parseFloat(p.valor_venta) || 0 }];
+    }
+    var porCaja = parseInt(p.unidad_cerrada, 10) || 1;
+    var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+    var porIntermedio = parseInt(p.unidades_por_intermedio, 10) || 1;
+    var precioCaja = parseFloat(p.valor_venta) || 0;
+    var precioIntermedio = parseFloat(p.valor_intermedio) || 0;
+    var precioUnidad = parseFloat(p.valor_unidad) || 0;
+    var nombreIntermedio = p.nombre_intermedio || 'nivel';
+
+    if (porCaja <= 1) {
+        return [{ tipo: 'UNIDAD', etiqueta: 'Unidad', precio: precioCaja > 0 ? precioCaja : precioUnidad }];
+    }
+
+    var formas = [];
+    if (intermedios > 0 && precioIntermedio > 0) {
+        formas.push({ tipo: 'CAJA_INTERMEDIO', etiqueta: 'Caja (' + (intermedios * porIntermedio) + ' und mínimo)', precio: precioCaja });
+        formas.push({ tipo: 'INTERMEDIO', etiqueta: nombreIntermedio + ' (' + porIntermedio + ' und)', precio: precioIntermedio });
+        formas.push({ tipo: 'UNIDAD', etiqueta: 'Unidad suelta', precio: precioUnidad });
+    } else {
+        formas.push({ tipo: 'CAJA', etiqueta: 'Caja (' + porCaja + ' und)', precio: precioCaja });
+        if (parseInt(p.fraccion, 10) > 0) {
+            formas.push({ tipo: 'UNIDAD', etiqueta: 'Unidad suelta', precio: precioUnidad });
+        }
+    }
+    return formas;
+}
+
+function psAgregarProducto(p) {
+    var formas = psFormasVenta(p);
+    if (!formas.length) {
+        PNotify.error({text: 'El producto no tiene precio de venta configurado'});
+        return;
+    }
+    var forma = formas[0];
+
+    // Verificar si ya existe la misma presentación
     for (var i = 0; i < psDetalles.length; i++) {
-        if (psDetalles[i].id_producto === id) {
-            PNotify.info({text: 'El producto ya está en la lista'});
+        if (psDetalles[i].id_producto === p.id_producto && psDetalles[i].tipo_venta === forma.tipo) {
+            PNotify.info({text: 'Esa presentación ya está en la lista'});
             return;
         }
     }
 
+    var esDecimal = forma.tipo === 'FRACCION_DECIMAL';
     psDetalles.push({
-        id_producto: id,
-        codigo: codigo,
-        descripcion: descripcion,
-        cantidad: 1,
-        valor_unitario: precio,
-        subtotal: precio
+        id_producto: p.id_producto,
+        codigo: p.codigo,
+        descripcion: p.descripcion,
+        tipo_venta: forma.tipo,
+        valor_unitario: forma.precio,
+        cantidad: esDecimal ? 0.5 : 1,
+        subtotal: forma.precio * (esDecimal ? 0.5 : 1),
+        formas: formas
     });
 
     psRenderDetalle();
     $('#ps_resultados_busqueda').hide().html('');
     $('#ps_buscar_producto').val('').focus();
+}
+
+// Cambia la forma de venta del detalle y ajusta el precio a esa presentación
+function psCambiarFormaVenta(index, tipo) {
+    var p = psDetalles[index];
+    var forma = null;
+    $.each(p.formas, function(i, f) { if (f.tipo === tipo) forma = f; });
+    if (!forma) return;
+    p.tipo_venta = forma.tipo;
+    p.valor_unitario = forma.precio;
+    p.subtotal = p.cantidad * p.valor_unitario;
+    psRenderDetalle();
 }
 
 function psEliminarProducto(index) {
@@ -320,10 +375,17 @@ function psEliminarProducto(index) {
 }
 
 function psCambiarCantidad(index, cantidad) {
-    cantidad = parseInt(cantidad) || 1;
-    if (cantidad < 1) cantidad = 1;
-    psDetalles[index].cantidad = cantidad;
-    psDetalles[index].subtotal = cantidad * psDetalles[index].valor_unitario;
+    var p = psDetalles[index];
+    if (p.tipo_venta === 'FRACCION_DECIMAL') {
+        cantidad = parseFloat(cantidad) || 0;
+        if (cantidad < 0.01) cantidad = 0.01;
+        cantidad = Math.round(cantidad * 100) / 100;
+    } else {
+        cantidad = parseInt(cantidad) || 1;
+        if (cantidad < 1) cantidad = 1;
+    }
+    p.cantidad = cantidad;
+    p.subtotal = cantidad * p.valor_unitario;
     psRenderDetalle();
 }
 
@@ -341,19 +403,36 @@ function psRenderDetalle() {
     var totalItems = 0;
 
     if (!psDetalles.length) {
-        html = '<tr id="ps_sin_productos"><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-box-open me-1"></i>Agregue productos al plan separe</td></tr>';
+        html = '<tr id="ps_sin_productos"><td colspan="7" class="text-center text-muted py-3"><i class="fas fa-box-open me-1"></i>Agregue productos al plan separe</td></tr>';
     } else {
         $.each(psDetalles, function(i, p) {
             subtotal += p.subtotal;
             totalItems += p.cantidad;
+            var esDecimal = p.tipo_venta === 'FRACCION_DECIMAL';
+            var paso = esDecimal ? 0.5 : 1;
+            var min = esDecimal ? 0.01 : 1;
+            var pasoHtml = esDecimal ? '0.01' : '1';
+
+            var selectForma = '';
+            if (p.formas && p.formas.length > 1) {
+                selectForma = '<select class="form-select form-select-sm" style="min-width:170px" onchange="psCambiarFormaVenta(' + i + ', this.value)">';
+                $.each(p.formas, function(k, f) {
+                    selectForma += '<option value="' + f.tipo + '"' + (f.tipo === p.tipo_venta ? ' selected' : '') + '>' + escHtml(f.etiqueta) + '</option>';
+                });
+                selectForma += '</select>';
+            } else {
+                selectForma = '<small class="text-muted">' + escHtml(p.formas && p.formas.length ? p.formas[0].etiqueta : 'Unidad') + '</small>';
+            }
+
             html += '<tr>' +
                 '<td><small>' + escHtml(p.codigo) + '</small></td>' +
                 '<td><small>' + escHtml(p.descripcion) + '</small></td>' +
+                '<td>' + selectForma + '</td>' +
                 '<td class="text-center" style="width:90px">' +
                     '<div class="input-group input-group-sm">' +
-                        '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="psCambiarCantidad(' + i + ',' + (p.cantidad - 1) + ')">-</button>' +
-                        '<input type="number" class="form-control text-center" value="' + p.cantidad + '" min="1" style="width:45px" onchange="psCambiarCantidad(' + i + ', this.value)">' +
-                        '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="psCambiarCantidad(' + i + ',' + (p.cantidad + 1) + ')">+</button>' +
+                        '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="psCambiarCantidad(' + i + ',' + (p.cantidad - paso) + ')">-</button>' +
+                        '<input type="number" class="form-control text-center" value="' + p.cantidad + '" min="' + min + '" step="' + pasoHtml + '" style="width:45px" onchange="psCambiarCantidad(' + i + ', this.value)">' +
+                        '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="psCambiarCantidad(' + i + ',' + (p.cantidad + paso) + ')">+</button>' +
                     '</div>' +
                 '</td>' +
                 '<td class="text-end" style="width:130px">' +
@@ -370,7 +449,7 @@ function psRenderDetalle() {
     }
 
     $('#ps_tbody_detalle').html(html);
-    $('#ps_total_productos').text(totalItems + ' productos');
+    $('#ps_total_productos').text(totalItems.toLocaleString('es-CO', {maximumFractionDigits:2}) + ' productos');
     $('#ps_subtotal').val(formatoNumero(subtotal));
 
     // Si no hay productos, poner valor total manual, si hay sugerir subtotal
@@ -398,14 +477,19 @@ $('#ps_btn_buscar, #ps_buscar_producto').on('keypress click', function(e) {
                 $('#ps_resultados_busqueda').html('<div class="text-muted small p-2">No se encontraron productos</div>').show();
                 return;
             }
-            var html = '<div class="list-group list-group-flush" style="max-height:200px;overflow-y:auto">';
+            psResultados = r.data;
+            var html = '<div class="list-group list-group-flush" style="max-height:260px;overflow-y:auto">';
             $.each(r.data, function(i, p) {
-                html += '<a href="#" class="list-group-item list-group-item-action py-2 small" onclick="psAgregarProducto(' +
-                    p.id_producto + ',\'' + escHtml(p.codigo) + '\',\'' + escHtml(p.descripcion) + '\',' +
-                    p.valor_venta + ',' + p.stock + ');return false;">' +
+                var formas = psFormasVenta(p);
+                var precios = [];
+                $.each(formas, function(k, f) {
+                    precios.push('$' + formatoNumero(f.precio) + ' <small class="text-muted">' + escHtml(f.etiqueta) + '</small>');
+                });
+                html += '<a href="#" class="list-group-item list-group-item-action py-2 small" onclick="psAgregarProducto(psResultados[' + i + ']);return false;">' +
                     '<div class="d-flex justify-content-between align-items-center">' +
                     '<span><strong>' + escHtml(p.codigo) + '</strong> - ' + escHtml(p.descripcion) + '</span>' +
-                    '<span class="text-nowrap">$' + formatoNumero(p.valor_venta) + ' | Stock: ' + p.stock + '</span>' +
+                    '<span class="text-nowrap text-end">' + (precios.length ? precios.join(' · ') : 'Sin precio') +
+                    '<br><small class="text-muted">Stock: ' + formatoNumero(p.stock) + '</small></span>' +
                     '</div></a>';
             });
             html += '</div>';
@@ -427,14 +511,28 @@ $('#ps_buscar_producto').on('keyup', function() {
 });
 
 // Guardar nuevo plan separe
+var psGuardando = false;
+
+function psBloquearGuardado(bloquear) {
+    psGuardando = bloquear;
+    var $btn = $('#ps_btn_guardar');
+    $btn.prop('disabled', bloquear);
+    $btn.html('<i class="fas ' + (bloquear ? 'fa-spinner fa-spin' : 'fa-save') + ' me-2"></i>' +
+              (bloquear ? 'Guardando...' : 'Guardar Plan Separe'));
+}
+
 $('#formPlanSepare').on('submit', function(e) {
     e.preventDefault();
+    // Evita que un doble clic cree dos planes
+    if (psGuardando) return;
+
     var data = $(this).serializeArray().reduce(function(o, i) { o[i.name] = i.value; return o; }, {});
     data.detalles = psDetalles.map(function(p) {
         return {
             id_producto: p.id_producto,
             cantidad: p.cantidad,
-            valor_unitario: p.valor_unitario
+            valor_unitario: p.valor_unitario,
+            tipo_venta: p.tipo_venta
         };
     });
 
@@ -443,6 +541,7 @@ $('#formPlanSepare').on('submit', function(e) {
         return;
     }
 
+    psBloquearGuardado(true);
     $.ajax({
         url: BASE_URL + '/plan-separe/guardar',
         method: 'POST',
@@ -463,31 +562,49 @@ $('#formPlanSepare').on('submit', function(e) {
             var msg = 'Error al crear Plan Separe';
             try { var r = JSON.parse(x.responseText); if (r.message) msg = r.message; } catch(e) {}
             PNotify.error({text: msg});
+        },
+        complete: function() {
+            psBloquearGuardado(false);
         }
     });
 });
 
+// Etiqueta de la forma de venta guardada en un detalle del plan
+function psEtiquetaFormaVenta(d) {
+    var porCaja = parseInt(d.unidad_cerrada, 10) || 1;
+    var intermedios = parseInt(d.unidades_intermedias, 10) || 0;
+    var porIntermedio = parseInt(d.unidades_por_intermedio, 10) || 1;
+    switch (d.tipo_venta) {
+        case 'FRACCION_DECIMAL': return 'Por ' + (d.unidad_medida || 'unidad');
+        case 'CAJA':
+        case 'CAJA_UNIDAD': return 'Caja (' + porCaja + ' und)';
+        case 'CAJA_INTERMEDIO': return 'Caja (' + (intermedios * porIntermedio) + ' und)';
+        default: return 'Unidad';
+    }
+}
+
 // ===== VER PRODUCTOS DE UN PLAN =====
 function verProductos(id, codigo) {
     $('#vp_info').text('Plan Separe: ' + codigo);
-    $('#vp_tbody').html('<tr><td colspan="5" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>');
+    $('#vp_tbody').html('<tr><td colspan="6" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>');
     $('#modalVerProductos').modal('show');
 
     $.getJSON(BASE_URL + '/plan-separe/detalle/' + id, function(r) {
         if (!r.success || !r.data) {
-            $('#vp_tbody').html('<tr><td colspan="5" class="text-center py-3 text-muted">Error al cargar productos</td></tr>');
+            $('#vp_tbody').html('<tr><td colspan="6" class="text-center py-3 text-muted">Error al cargar productos</td></tr>');
             return;
         }
         var detalles = r.data.detalles || [];
         if (!detalles.length) {
-            $('#vp_tbody').html('<tr><td colspan="5" class="text-center py-3 text-muted">Sin productos registrados</td></tr>');
+            $('#vp_tbody').html('<tr><td colspan="6" class="text-center py-3 text-muted">Sin productos registrados</td></tr>');
         } else {
             var html = '';
             $.each(detalles, function(i, d) {
                 html += '<tr>' +
                     '<td><small>' + escHtml(d.codigo || '-') + '</small></td>' +
                     '<td>' + escHtml(d.descripcion || 'Producto #' + d.id_producto) + '</td>' +
-                    '<td class="text-center">' + d.cantidad + '</td>' +
+                    '<td><small>' + escHtml(psEtiquetaFormaVenta(d)) + '</small></td>' +
+                    '<td class="text-center">' + parseFloat(d.cantidad || 0).toLocaleString('es-CO', {maximumFractionDigits:2}) + '</td>' +
                     '<td class="text-end">$' + formatoNumero(d.valor_unitario) + '</td>' +
                     '<td class="text-end fw-bold">$' + formatoNumero(d.subtotal) + '</td></tr>';
             });
