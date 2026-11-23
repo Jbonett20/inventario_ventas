@@ -312,6 +312,16 @@ class Producto
         $data = $this->normalizarNivelIntermedio($data);
         $sueltas = (int)$data['fraccion'] > 0;
 
+        // Si la caja no se abre, el producto no vende nivel intermedio ni
+        // unidades sueltas: se limpian los datos viejos para que la edición
+        // no muestre ni cobre una forma de venta que ya no aplica.
+        if (!$sueltas) {
+            $data['unidades_intermedias'] = 0;
+            $data['unidades_por_intermedio'] = 1;
+            $data['nombre_intermedio'] = null;
+            $data['valor_intermedio'] = 0;
+        }
+
         if ($porCaja > 1 && $sueltas && (int)$data['unidades_intermedias'] === 0) {
             $precioInterno = $data['valor_unidad'] ?? $antes['valor_unidad'] ?? 0;
             if ((float)$precioInterno <= 0) {

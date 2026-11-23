@@ -104,7 +104,7 @@
                                 <th style="width:110px">P.Unit</th>
                                 <th style="width:60px">IVA</th>
                                 <th style="width:90px">Total</th>
-                                <th style="width:130px">Opciones</th>
+                                <th class="col-opciones text-start">Opciones</th>
                             </tr>
                         </thead>
                         <tbody id="tbodyCarrito">
@@ -1125,11 +1125,12 @@ function actualizarCarrito() {
                 '<td>' + p.iva + '%</td>' +
                 '<td class="fw-bold">$' + formatoNumero(tot) + '</td>' +
                 '<td class="opciones-carrito">' +
+                    // Siempre los mismos 4 botones en el mismo orden; si el
+                    // producto no vende sueltas, el botón queda oculto pero
+                    // conserva su espacio para que la fila no se desplace.
                     '<div class="d-flex flex-nowrap align-items-center gap-1">' +
                         '<button class="btn btn-sm btn-outline-success" onclick="sumarUnaCaja(' + p.idCarrito + ')" title="Agregar ' + (conCaja ? 'una caja' : 'una unidad') + '"><i class="fas fa-plus"></i></button>' +
-                        (editaSueltas
-                            ? '<button class="btn btn-sm btn-outline-primary" onclick="sumarUnaSuelta(' + p.idCarrito + ')" title="Agregar ' + etiquetaMinimaCorta(p) + ' suelta"><i class="fas fa-plus-circle"></i></button>'
-                            : '') +
+                        '<button class="btn btn-sm btn-outline-primary' + (editaSueltas ? '' : ' btn-opcion-oculta') + '" onclick="sumarUnaSuelta(' + p.idCarrito + ')" title="Agregar ' + etiquetaMinimaCorta(p) + ' suelta"' + (editaSueltas ? '' : ' tabindex="-1" aria-hidden="true"') + '><i class="fas fa-plus-circle"></i></button>' +
                         '<button class="btn btn-sm btn-outline-secondary" onclick="restarUnaUnidad(' + p.idCarrito + ')" title="Quitar una ' + etiquetaMinimaCorta(p) + '"><i class="fas fa-minus"></i></button>' +
                         '<button class="btn btn-sm btn-outline-danger" onclick="eliminarDelCarrito(' + p.idCarrito + ')" title="Quitar del carrito"><i class="fas fa-times"></i></button>' +
                     '</div>' +
@@ -1859,31 +1860,55 @@ $('#buscarProducto').on('keydown', function(e) {
     box-shadow: 0 0 0 3px rgba(118,75,162,0.25);
     border-color: #764ba2;
 }
-/* Los botones +, - y × siempre en una sola línea, sin importar el producto */
+/* Los botones +, - y × siempre en una sola línea, alineados a la izquierda y
+   en el mismo orden, sin importar el producto ni su forma de venta. */
+#tablaCarrito th.col-opciones,
 #tablaCarrito td.opciones-carrito {
-    white-space: nowrap;
     width: 130px;
     min-width: 130px;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    white-space: nowrap;
+    text-align: left;
+    vertical-align: middle;
 }
 #tablaCarrito td.opciones-carrito > div {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.25rem;
+    min-width: 106px;
 }
 #tablaCarrito td.opciones-carrito .btn {
-    flex: 0 0 auto;
-    padding: 0.2rem 0.45rem;
-    line-height: 1.2;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+/* Cuando el producto no permite unidades sueltas, el botón se oculta pero
+   conserva su espacio para que los demás botones no se muevan. */
+#tablaCarrito td.opciones-carrito .btn-opcion-oculta {
+    visibility: hidden;
+    pointer-events: none;
 }
 /* Las columnas de nivel solo ocupan espacio cuando el producto realmente
-   usa ese nivel (se marcan con .nivel-visible). */
-#tablaCarrito td.col-intermedia,
-#tablaCarrito td.col-unidad {
-    display: none;
+   usa ese nivel (se marcan con .nivel-visible). Se ocultan con visibility
+   (no con display:none) para que la celda siga existiendo en la fila y el
+   resto de columnas no se corra: IVA queda siempre bajo IVA, Total bajo
+   Total y los botones siempre en la columna Opciones. */
+#tablaCarrito td.col-intermedia:not(.nivel-visible),
+#tablaCarrito td.col-unidad:not(.nivel-visible) {
+    visibility: hidden;
+    padding-left: 0;
+    padding-right: 0;
 }
-#tablaCarrito td.col-intermedia.nivel-visible,
-#tablaCarrito td.col-unidad.nivel-visible {
-    display: table-cell;
+#tablaCarrito td.col-intermedia:not(.nivel-visible) > *,
+#tablaCarrito td.col-unidad:not(.nivel-visible) > * {
+    display: none;
 }
 </style>

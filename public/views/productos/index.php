@@ -260,11 +260,11 @@
                                         <input type="text" class="form-control" name="nombre_intermedio" id="p_nombre_intermedio" placeholder="Sobre" maxlength="30" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label fw-semibold small" id="p_unidades_intermedias_label">Niveles intermedios por caja</label>
+                                        <label class="form-label fw-semibold small" id="p_unidades_intermedias_label">Niveles intermedios por caja <i class="fas fa-question-circle text-muted" title="Cuántos niveles intermedios (sobres, ampollas) trae una caja cerrada."></i></label>
                                         <input type="number" class="form-control" name="unidades_intermedias" id="p_unidades_intermedias" min="0" value="0" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label fw-semibold small" id="p_unidades_por_intermedio_label">Unidades mínimas por nivel</label>
+                                        <label class="form-label fw-semibold small" id="p_unidades_por_intermedio_label">Unidades mínimas por nivel <i class="fas fa-question-circle text-muted" title="Cuántas unidades mínimas (pastillas) trae cada nivel intermedio."></i></label>
                                         <input type="number" class="form-control" name="unidades_por_intermedio" id="p_unidades_por_intermedio" min="0" value="1" onchange="actualizarAyudaEquivalencia()">
                                     </div>
                                     <div class="col-md-3">
@@ -357,34 +357,75 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body small">
-                <h6 class="fw-bold">1. Tipo de venta</h6>
-                <ul class="mb-3">
-                    <li><strong>Unidad (entera):</strong> el producto se vende de a una unidad (una lata, un jabón). Si trae varias unidades por caja, indícalo en <em>Unidades internas por caja</em>.</li>
-                    <li><strong>Caja completa:</strong> solo se vende la caja cerrada; no se venden unidades sueltas.</li>
-                    <li><strong>Fracción decimal:</strong> se vende por cantidad medida (0,5 litro, 1,25 kg, 3 metros). Requiere <em>Unidad de medida</em> y <em>Cantidad x Unidad</em>.</li>
-                </ul>
+                <p class="mb-3">El <strong>Forma de Venta</strong> decide qué campos se muestran, cómo se cobra y cómo se descuenta el inventario. El inventario <strong>siempre se lleva en unidades mínimas</strong>: la unidad más pequeña que se puede vender (una lata, un sobre, una pastilla, un litro...).</p>
 
-                <h6 class="fw-bold">2. Equivalencias del empaque</h6>
-                <table class="table table-sm table-bordered align-middle">
-                    <thead class="table-light"><tr><th>Campo</th><th>Qué significa</th><th>Ejemplo</th></tr></thead>
+                <h6 class="fw-bold">1. Formas de venta</h6>
+                <table class="table table-sm table-bordered align-middle mb-3">
+                    <thead class="table-light"><tr><th style="width:42mm">Forma de Venta</th><th>Cuándo usarla</th><th style="width:42mm">En el POS se escribe</th></tr></thead>
                     <tbody>
-                        <tr><td>Unidades internas por caja</td><td>Cuántas unidades vendibles trae una caja cerrada. Deja 1 si no se vende por caja.</td><td>Caja de 12 sobres → 12</td></tr>
-                        <tr><td>Unidades internas sueltas</td><td>Permite abrir la caja y vender sus unidades una por una. Exige el precio de la unidad suelta.</td><td>Vender 1 sobre de la caja</td></tr>
-                        <tr><td>Tiene nivel intermedio</td><td>Empaque de tres niveles: caja → sobre → pastilla. Cada nivel tiene su precio.</td><td>Caja × 50 sobres × 10 pastillas</td></tr>
-                        <tr><td>Niveles intermedios por caja</td><td>Cuántos niveles intermedios (sobres) trae la caja.</td><td>50 sobres</td></tr>
-                        <tr><td>Unidades mínimas por nivel</td><td>Cuántas unidades mínimas (pastillas) trae cada nivel intermedio.</td><td>10 pastillas por sobre</td></tr>
+                        <tr><td><strong>Unidad (entera)</strong></td><td>Se vende de a una unidad (una lata, un jabón, un cepillo).</td><td>Unidades en la columna <em>Und</em>.</td></tr>
+                        <tr><td><strong>Caja completa</strong></td><td>Solo se vende la caja cerrada; no se abren cajas.</td><td>Cajas en la columna <em>Cant. caja</em>. La columna <em>Und</em> queda bloqueada.</td></tr>
+                        <tr><td><strong>Caja + Unidad</strong></td><td>Se vende la caja completa o sus unidades sueltas (caja de 24 latas y también latas sueltas).</td><td>Cajas en <em>Cant. caja</em> y unidades sueltas en <em>Und</em>.</td></tr>
+                        <tr><td><strong>Caja + Intermedio + Unidad</strong></td><td>Empaque de tres niveles: caja → sobre → pastilla. Cada nivel tiene su precio.</td><td>Cajas, sobres y pastillas en tres columnas separadas.</td></tr>
+                        <tr><td><strong>Fracción decimal</strong></td><td>Se vende por medida: 0,5 litro, 1,25 kg, 3 metros.</td><td>Cantidad decimal (0.25, 0.5, 1.75...).</td></tr>
                     </tbody>
                 </table>
 
-                <h6 class="fw-bold">3. Precios</h6>
+                <h6 class="fw-bold">2. Campos del formulario</h6>
+                <table class="table table-sm table-bordered align-middle mb-3">
+                    <thead class="table-light"><tr><th style="width:48mm">Campo</th><th>Qué significa</th><th style="width:34mm">Ejemplo</th></tr></thead>
+                    <tbody>
+                        <tr><td>Descripción</td><td>Nombre del producto. Obligatorio.</td><td>Jarabe infantil caja x 10 sobres</td></tr>
+                        <tr><td>Código</td><td>Lo asigna el sistema (consecutivo numérico). No se digita.</td><td>1000034</td></tr>
+                        <tr><td>Código Barras #1, #2, #3</td><td>Hasta tres códigos de barras para buscar el producto en el POS.</td><td>7701234567890</td></tr>
+                        <tr><td>Presentación</td><td>Texto libre. En fracción decimal se genera sola (ej: X1 LITRO).</td><td>X30ML</td></tr>
+                        <tr><td>Marca, Proveedor, Categoría, IVA, Sección</td><td>Datos de clasificación. Se usan para filtrar y para calcular el IVA en la venta.</td><td>—</td></tr>
+                        <tr><td>Imagen del Producto / URL de imagen</td><td>Foto del producto (PNG, JPG o WEBP, máx 2MB) o una dirección web.</td><td>—</td></tr>
+                        <tr><td>Unidades por caja</td><td>Cuántas unidades mínimas trae una caja cerrada. Solo en formas con caja; mínimo 2.</td><td>Caja de 12 sobres → 12</td></tr>
+                        <tr><td>Nombre del nivel intermedio</td><td>Nombre de la presentación intermedia (solo Caja + Intermedio + Unidad).</td><td>Sobre</td></tr>
+                        <tr><td>Niveles intermedios por caja</td><td>Cuántos niveles intermedios trae la caja.</td><td>50 sobres</td></tr>
+                        <tr><td>Unidades mínimas por nivel</td><td>Cuántas unidades mínimas trae cada nivel intermedio.</td><td>10 pastillas por sobre</td></tr>
+                        <tr><td>Unidad de Medida / Cantidad x Unidad</td><td>Solo fracción decimal: en qué se mide y cuánto equivale una unidad de venta.</td><td>LITRO / 1</td></tr>
+                        <tr><td>Precio Compra</td><td>Costo de una unidad mínima. El costo de la caja se calcula multiplicando.</td><td>$800 por sobre</td></tr>
+                        <tr><td>Precio Venta</td><td>Precio de la presentación principal: la caja si hay caja, o la unidad/medida si no.</td><td>$12.000 la caja</td></tr>
+                        <tr><td>Precio Venta (nivel intermedio)</td><td>Precio de un sobre suelto (solo Caja + Intermedio + Unidad).</td><td>$1.200 el sobre</td></tr>
+                        <tr><td>Precio Venta (unidad suelta / unidad mínima)</td><td>Precio de una unidad mínima suelta. Obligatorio si se venden sueltas.</td><td>$150 la pastilla</td></tr>
+                        <tr><td>Stock Mínimo</td><td>Cantidad a partir de la cual el sistema avisa que hay que reabastecer.</td><td>10</td></tr>
+                        <tr><td>Rentabilidad</td><td>Se calcula sola: (venta − costo de la caja) ÷ venta.</td><td>—</td></tr>
+                        <tr><td>Precio Máximo Regulado</td><td>Tope legal de venta para medicamentos regulados. Vacío si no aplica.</td><td>—</td></tr>
+                    </tbody>
+                </table>
+
+                <h6 class="fw-bold">3. Reglas y validaciones del sistema</h6>
                 <ul class="mb-3">
-                    <li><strong>Precio Venta:</strong> precio de la presentación principal (la caja o la unidad).</li>
-                    <li><strong>Precio Nivel Intermedio:</strong> precio de un sobre suelto (solo con nivel intermedio).</li>
-                    <li><strong>Precio Unidad Mínima:</strong> precio de una pastilla/unidad suelta.</li>
+                    <li><strong>Fracción decimal:</strong> exige <em>Unidad de medida</em> y <em>Cantidad x Unidad</em> mayor que cero.</li>
+                    <li><strong>Caja completa:</strong> exige al menos 2 unidades mínimas por caja. Si no hay caja, use <em>Unidad (entera)</em>.</li>
+                    <li><strong>Unidades sueltas:</strong> si la caja se abre, el sistema exige el precio de la unidad suelta (o el del nivel intermedio).</li>
+                    <li><strong>Nivel intermedio:</strong> exige nombre, cantidad de niveles, unidades por nivel y precio del nivel.</li>
+                    <li><strong>Unidades por caja:</strong> con nivel intermedio se calcula sola (niveles × unidades por nivel) y el campo queda bloqueado.</li>
+                    <li>El <strong>código</strong> es siempre numérico y consecutivo; si se intenta repetir, el sistema lo rechaza.</li>
                 </ul>
 
-                <h6 class="fw-bold">4. Cómo se descuenta el inventario</h6>
-                <p class="mb-0">El stock siempre se lleva en <strong>unidades mínimas</strong> (pastillas, sobres o unidades). Al vender una caja se descuentan todas sus unidades mínimas; al vender un sobre, solo las pastillas de ese sobre. En el punto de venta puedes escribir cajas, sobres y unidades a la vez y cada nivel se cobra a su precio.</p>
+                <h6 class="fw-bold">4. Ejemplos completos</h6>
+                <p class="mb-1"><strong>A) Caja de 10 sobres que también se vende por sobre</strong> — Forma: <em>Caja + Unidad</em>; Unidades por caja: 10; Precio Compra: $800 (por sobre); Precio Venta: $12.000 (caja); Precio Venta (unidad suelta): $1.500 (sobre).</p>
+                <p class="mb-1"><strong>B) Caja sellada de 12 unidades</strong> — Forma: <em>Caja completa</em>; Unidades por caja: 12; Precio Venta: $36.000. En el POS solo se digitan cajas.</p>
+                <p class="mb-1"><strong>C) Caja × 50 sobres × 10 pastillas</strong> — Forma: <em>Caja + Intermedio + Unidad</em>; Nombre: Sobre; Niveles por caja: 50; Unidades por nivel: 10 (el sistema calcula 500 unidades por caja); Precio Venta: precio de la caja; Precio Venta (Sobre): precio del sobre; Precio Venta (unidad mínima): precio de la pastilla.</p>
+                <p class="mb-1"><strong>D) Thinner por litro</strong> — Forma: <em>Fracción decimal</em>; Unidad de Medida: LITRO; Cantidad x Unidad: 1; Precio Venta: $9.000 (por litro). La presentación queda "X1 LITRO".</p>
+                <p class="mb-3"><strong>E) Cepillo de dientes</strong> — Forma: <em>Unidad (entera)</em>; Precio Venta: $3.500.</p>
+
+                <h6 class="fw-bold">5. Cómo se cobra y se descuenta el inventario en el POS</h6>
+                <p class="mb-2">El stock se lleva en <strong>unidades mínimas</strong>. Al agregar el producto al carrito se crea una línea con su configuración; según la forma de venta aparecen las columnas <em>Cant. caja</em>, <em>Sobre</em> y <em>Und</em>:</p>
+                <table class="table table-sm table-bordered align-middle mb-3">
+                    <thead class="table-light"><tr><th style="width:50mm">Lo que pide el cliente</th><th>Qué hacer en el POS</th><th style="width:50mm">Qué cobra y descuenta</th></tr></thead>
+                    <tbody>
+                        <tr><td>Una caja completa</td><td>Cant. caja = 1, Und = 0</td><td>Precio de la caja; descuenta todas las unidades mínimas de la caja.</td></tr>
+                        <tr><td>Un sobre / una unidad suelta</td><td>Cant. caja = 0, Und = 1 (o el botón <i class="fas fa-plus-circle text-primary"></i>)</td><td>Precio de la unidad suelta; descuenta 1 unidad mínima.</td></tr>
+                        <tr><td>Dos cajas y tres sobres</td><td>Cant. caja = 2, Und = 3</td><td>2 × precio caja + 3 × precio suelto.</td></tr>
+                        <tr><td>Caja + sobres + pastillas</td><td>Escriba cada nivel en su columna</td><td>Cada nivel se cobra a su precio; el inventario descuenta el total de unidades mínimas.</td></tr>
+                        <tr><td>Medio litro</td><td>Cantidad = 0.5</td><td>0.5 × precio por litro; descuenta 0.5 de la medida.</td></tr>
+                    </tbody>
+                </table>
+                <p class="mb-0">El POS no permite vender más que el stock disponible: si la línea supera el stock, la cantidad se revierte y se muestra el disponible en unidades mínimas.</p>
             </div>
             <div class="modal-footer bg-light">
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
@@ -794,12 +835,16 @@ function editarProducto(id) {
         $('#p_categoria').val(p.id_categoria || '');
         $('#p_iva').val(p.id_iva || '');
         $('#p_seccion').val(p.id_seccion || '');
-        // La forma de venta se deduce de la configuración guardada
+        // La forma de venta se deduce de la configuración guardada. El nivel
+        // intermedio solo cuenta si el producto realmente lo vende (tiene
+        // precio): si se cambió a "Caja completa" o "Caja + Unidad", los datos
+        // viejos del nivel intermedio no deben reaparecer en el formulario.
         var intermedios = parseInt(p.unidades_intermedias, 10) || 0;
+        var valorIntermedio = parseFloat(p.valor_intermedio) || 0;
         var porCaja = parseInt(p.unidad_cerrada, 10) || 1;
         var formaVenta = p.tipo_venta || 'UNIDAD';
         if (formaVenta !== 'FRACCION_DECIMAL') {
-            if (intermedios > 0 && porCaja > 1) {
+            if (intermedios > 0 && valorIntermedio > 0 && porCaja > 1) {
                 formaVenta = 'CAJA_INTERMEDIO';
             } else if (porCaja > 1) {
                 formaVenta = parseInt(p.fraccion, 10) > 0 ? 'CAJA_UNIDAD' : 'CAJA';
@@ -812,10 +857,10 @@ function editarProducto(id) {
         $('#p_cantidad_por_unidad').val(p.cantidad_por_unidad || 1);
         $('#p_unidad_cerrada').val(p.unidad_cerrada || 1);
         $('#p_fraccion').val(p.fraccion || 0);
-        $('#p_unidades_intermedias').val(intermedios);
-        $('#p_unidades_por_intermedio').val(parseInt(p.unidades_por_intermedio, 10) || 1);
-        $('#p_nombre_intermedio').val(p.nombre_intermedio || '');
-        $('#p_valor_intermedio').val(parseFloat(p.valor_intermedio) > 0 ? p.valor_intermedio : '');
+        $('#p_unidades_intermedias').val(formaVenta === 'CAJA_INTERMEDIO' ? intermedios : 0);
+        $('#p_unidades_por_intermedio').val(formaVenta === 'CAJA_INTERMEDIO' ? (parseInt(p.unidades_por_intermedio, 10) || 1) : 1);
+        $('#p_nombre_intermedio').val(formaVenta === 'CAJA_INTERMEDIO' ? (p.nombre_intermedio || '') : '');
+        $('#p_valor_intermedio').val(formaVenta === 'CAJA_INTERMEDIO' ? valorIntermedio : '');
         $('#p_compra').val(p.valor_compra);
         $('#p_venta').val(p.valor_venta);
         $('#p_valor_unidad').val(p.valor_unidad);
