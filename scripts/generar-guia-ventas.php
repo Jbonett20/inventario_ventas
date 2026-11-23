@@ -53,28 +53,40 @@ $html = <<<'HTML'
 
 <div class="pagebreak"></div>
 
-<h2>1. Los tres tipos de venta</h2>
-<p>En <span class="tag">Productos</span> cada producto se registra con un <span class="tag">Tipo de Venta</span>. Ese tipo decide qué campos se muestran, cómo se calcula el precio y cómo se descuenta el inventario. Todo el inventario se lleva en <span class="tag">unidades internas</span>: la unidad más pequeña que se puede vender.</p>
+<h2>1. Las cinco formas de venta</h2>
+<p>En <span class="tag">Productos</span> cada producto se registra con una <span class="tag">Forma de Venta</span>. Esa forma decide qué campos se muestran, cómo se calcula el precio y cómo se descuenta el inventario. Todo el inventario se lleva en <span class="tag">unidades mínimas</span>: la unidad más pequeña que se puede vender (una lata, un sobre, una pastilla, un litro...).</p>
 
 <table>
     <thead>
-        <tr><th style="width:28mm">Tipo</th><th>Cuándo usarlo</th><th style="width:45mm">Inventario</th><th style="width:38mm">Cantidades que admite el POS</th></tr>
+        <tr><th style="width:34mm">Forma de Venta</th><th>Cuándo usarla</th><th style="width:32mm">Inventario</th><th style="width:38mm">Cantidades que admite el POS</th></tr>
     </thead>
     <tbody>
         <tr>
-            <td><strong>UNIDAD</strong></td>
-            <td>Se vende por unidades completas. Si el producto viene en caja con varias unidades internas (por ejemplo, una caja de 10 sobres), aquí se configura la equivalencia.</td>
-            <td>Unidades internas enteras.</td>
-            <td>Enteras (cajas y/o unidades internas).</td>
+            <td><strong>Unidad (entera)</strong></td>
+            <td>Se vende de a una unidad (una lata, un jabón, un cepillo).</td>
+            <td>Unidades mínimas enteras.</td>
+            <td>Enteras (columna <em>Und</em>).</td>
         </tr>
         <tr>
-            <td><strong>CAJA</strong></td>
+            <td><strong>Caja completa</strong></td>
             <td>Se vende únicamente la presentación cerrada completa. No se abren cajas.</td>
-            <td>Unidades internas enteras.</td>
-            <td>Enteras (cajas).</td>
+            <td>Unidades mínimas enteras.</td>
+            <td>Enteras, solo cajas.</td>
         </tr>
         <tr>
-            <td><strong>FRACCION_DECIMAL</strong></td>
+            <td><strong>Caja + Unidad</strong></td>
+            <td>Se vende la caja completa o sus unidades sueltas (caja de 24 latas y también latas sueltas).</td>
+            <td>Unidades mínimas enteras.</td>
+            <td>Enteras (cajas y unidades sueltas).</td>
+        </tr>
+        <tr>
+            <td><strong>Caja + Intermedio + Unidad</strong></td>
+            <td>Empaque de tres niveles: caja &rarr; sobre &rarr; pastilla. Cada nivel tiene su precio.</td>
+            <td>Unidades mínimas enteras.</td>
+            <td>Enteras en tres columnas: cajas, sobres y pastillas.</td>
+        </tr>
+        <tr>
+            <td><strong>Fracción decimal</strong></td>
             <td>Se vende por medida: litros, metros, kilos, gramos, etc. Se puede vender una parte, como 0.5 litros.</td>
             <td>Decimal, en la unidad de medida.</td>
             <td>Decimales (0.25, 0.5, 1.75...).</td>
@@ -83,31 +95,43 @@ $html = <<<'HTML'
 </table>
 
 <div class="note">
-    <strong>Regla de oro:</strong> el precio de la caja es el precio de la presentación cerrada y el precio de la unidad interna es el precio de una unidad suelta. Si la caja trae 10 sobres, el POS cobra el precio del sobre cuando se vende suelto y el precio de la caja cuando se vende completa.
+    <strong>Regla de oro:</strong> el precio de la caja es el precio de la presentación cerrada, el precio del nivel intermedio es el precio de un sobre suelto y el precio de la unidad mínima es el precio de una unidad suelta (una pastilla, una lata). Cada nivel se cobra a su propio precio.
 </div>
 
 <h2>2. Cómo registrar un producto</h2>
-<p>Vaya a <span class="tag">Productos &rarr; Nuevo Producto</span> y complete los datos básicos: descripción, marca, proveedor, categoría, IVA, sección, imagen y stock mínimo. El código se asigna automáticamente. Después configure el bloque de venta:</p>
+<p>Vaya a <span class="tag">Productos &rarr; Nuevo Producto</span> y complete los datos básicos: descripción, códigos de barras, presentación, marca, proveedor, categoría, IVA, sección, imagen y stock mínimo. El código se asigna automáticamente. Después configure el bloque de venta.</p>
 
-<h3>2.1 Campos del bloque de venta</h3>
+<h3>2.1 Campos del formulario</h3>
 <table>
     <thead>
-        <tr><th style="width:52mm">Campo</th><th>Qué significa</th></tr>
+        <tr><th style="width:50mm">Campo</th><th>Qué significa</th></tr>
     </thead>
     <tbody>
-        <tr><td><strong>Tipo de Venta</strong></td><td>UNIDAD, CAJA o FRACCION_DECIMAL.</td></tr>
-        <tr><td><strong>Unidades internas por caja</strong></td><td>Cuántas unidades vendibles trae una caja cerrada. Use 1 si el producto no se vende por caja.</td></tr>
-        <tr><td><strong>Unidades internas sueltas</strong></td><td>Indique si la caja se puede abrir para vender sus unidades internas una por una.</td></tr>
-        <tr><td><strong>Precio Compra</strong></td><td>Costo de una unidad interna.</td></tr>
-        <tr><td><strong>Precio Venta</strong></td><td>Precio de la presentación principal: la caja si se configura como caja, o la unidad si no hay caja. En fracción decimal, es el precio por la cantidad equivalente (por ejemplo, por litro).</td></tr>
-        <tr><td><strong>Precio Unidad Interna</strong></td><td>Precio de una unidad interna suelta. Obligatorio si se venden unidades internas sueltas.</td></tr>
-        <tr><td><strong>Unidad de Medida</strong></td><td>Solo para FRACCION_DECIMAL: litro, metro, kilo, libra, etc.</td></tr>
-        <tr><td><strong>Cantidad x Unidad</strong></td><td>Solo para FRACCION_DECIMAL: cuánto equivale una unidad de venta (ejemplo: 1 botella = 1 litro).</td></tr>
+        <tr><td><strong>Descripción</strong></td><td>Nombre del producto. Obligatorio.</td></tr>
+        <tr><td><strong>Código</strong></td><td>El sistema asigna un consecutivo numérico. No se digita y no se puede repetir.</td></tr>
+        <tr><td><strong>Código Barras #1, #2, #3</strong></td><td>Hasta tres códigos de barras para buscar el producto en el POS.</td></tr>
+        <tr><td><strong>Presentación</strong></td><td>Texto libre (ej: X30ML). En fracción decimal se genera automáticamente (ej: X1 LITRO).</td></tr>
+        <tr><td><strong>Marca, Proveedor, Categoría, IVA, Sección</strong></td><td>Datos de clasificación; el IVA se aplica en la venta.</td></tr>
+        <tr><td><strong>Imagen del Producto / URL de imagen</strong></td><td>Foto del producto (PNG, JPG o WEBP, máx 2MB) o una dirección web.</td></tr>
+        <tr><td><strong>Forma de Venta</strong></td><td>Unidad (entera), Caja completa, Caja + Unidad, Caja + Intermedio + Unidad o Fracción decimal.</td></tr>
+        <tr><td><strong>Unidades por caja</strong></td><td>Cuántas unidades mínimas trae una caja cerrada. Solo en formas con caja; mínimo 2.</td></tr>
+        <tr><td><strong>Nombre del nivel intermedio</strong></td><td>Nombre de la presentación intermedia (solo Caja + Intermedio + Unidad). Ej: Sobre.</td></tr>
+        <tr><td><strong>Niveles intermedios por caja</strong></td><td>Cuántos niveles intermedios trae la caja.</td></tr>
+        <tr><td><strong>Unidades mínimas por nivel</strong></td><td>Cuántas unidades mínimas trae cada nivel intermedio.</td></tr>
+        <tr><td><strong>Unidad de Medida</strong></td><td>Solo fracción decimal: litro, metro, kilo, libra, etc.</td></tr>
+        <tr><td><strong>Cantidad x Unidad</strong></td><td>Solo fracción decimal: cuánto equivale una unidad de venta (ejemplo: 1 botella = 1 litro).</td></tr>
+        <tr><td><strong>Precio Compra</strong></td><td>Costo de una unidad mínima. El costo de la caja se calcula multiplicando.</td></tr>
+        <tr><td><strong>Precio Venta</strong></td><td>Precio de la presentación principal: la caja si hay caja, o la unidad/medida si no.</td></tr>
+        <tr><td><strong>Precio Venta (nivel intermedio)</strong></td><td>Precio de un sobre suelto (solo Caja + Intermedio + Unidad).</td></tr>
+        <tr><td><strong>Precio Venta (unidad suelta / unidad mínima)</strong></td><td>Precio de una unidad mínima suelta. Obligatorio si se venden sueltas.</td></tr>
+        <tr><td><strong>Stock Mínimo</strong></td><td>Cantidad a partir de la cual el sistema avisa que hay que reabastecer.</td></tr>
+        <tr><td><strong>Rentabilidad</strong></td><td>Se calcula sola: (venta &minus; costo de la caja) &divide; venta.</td></tr>
+        <tr><td><strong>Precio Máximo Regulado</strong></td><td>Tope legal de venta para medicamentos regulados. Vacío si no aplica.</td></tr>
     </tbody>
 </table>
 
 <div class="warn">
-    <strong>Validaciones del sistema:</strong> un producto decimal no se guarda sin unidad de medida ni cantidad mayor que cero. Una caja con varias unidades internas que se venden sueltas no se guarda sin el precio de la unidad interna. Al cambiar de tipo, el sistema ajusta la equivalencia para que no queden datos contradictorios.
+    <strong>Validaciones del sistema:</strong> la fracción decimal no se guarda sin unidad de medida ni cantidad mayor que cero. La caja completa exige al menos 2 unidades mínimas. Si la caja se abre, se exige el precio de la unidad suelta (o el del nivel intermedio). El nivel intermedio exige nombre, cantidad de niveles, unidades por nivel y precio. Con nivel intermedio, el campo <em>Unidades por caja</em> se calcula solo (niveles &times; unidades por nivel) y queda bloqueado.
 </div>
 
 <div class="pagebreak"></div>
@@ -119,50 +143,49 @@ $html = <<<'HTML'
 <table>
     <tbody>
         <tr><td style="width:60mm"><strong>Descripción</strong></td><td>Jarabe infantil caja x 10 sobres</td></tr>
-        <tr><td><strong>Tipo de Venta</strong></td><td>UNIDAD</td></tr>
-        <tr><td><strong>Unidades internas por caja</strong></td><td>10</td></tr>
-        <tr><td><strong>Unidades internas sueltas</strong></td><td>Sí, se venden unidades internas sueltas</td></tr>
+        <tr><td><strong>Forma de Venta</strong></td><td>Caja + Unidad</td></tr>
+        <tr><td><strong>Unidades por caja</strong></td><td>10</td></tr>
         <tr><td><strong>Precio Compra</strong></td><td>$800 (por sobre)</td></tr>
         <tr><td><strong>Precio Venta</strong></td><td>$12.000 (caja completa)</td></tr>
-        <tr><td><strong>Precio Unidad Interna</strong></td><td>$1.500 (un sobre)</td></tr>
+        <tr><td><strong>Precio Venta (unidad suelta)</strong></td><td>$1.500 (un sobre)</td></tr>
     </tbody>
 </table>
 <p class="small">En la lista de productos, la columna Equivalencia mostrará "10 und internas x caja" y la columna P. Und Interna mostrará $1.500.</p>
 
 <h3>3.2 Cómo queda el inventario</h3>
-<p>Al registrar un ingreso de 10 cajas, el inventario queda en <strong>100 unidades internas</strong> (10 cajas × 10 sobres). El POS muestra ese stock como "100 und internas".</p>
+<p>Al registrar un ingreso de 10 cajas, el inventario queda en <strong>100 unidades mínimas</strong> (10 cajas × 10 sobres). El POS muestra ese stock desglosado, por ejemplo "10 caja(s)".</p>
 
 <h3>3.3 Vender un sobre</h3>
 <ol>
     <li>Busque el producto y agréguelo al carrito. El primer clic agrega <strong>1 caja</strong>.</li>
-    <li>En la fila del carrito, deje <strong>Cajas = 0</strong> y escriba <strong>Und = 1</strong> (o use el botón <strong>+</strong> para cajas y el <strong>−</strong> para quitar una unidad).</li>
-    <li>El sistema cobra <strong>$1.500</strong> y descuenta <strong>1 unidad interna</strong>. Si la caja estaba cerrada, se abre y quedan 9 unidades disponibles.</li>
+    <li>En la fila del carrito, deje <strong>Cant. caja = 0</strong> y escriba <strong>Und = 1</strong> (o use el botón <strong>+</strong> para cajas y el <strong>+</strong> circular para unidades sueltas).</li>
+    <li>El sistema cobra <strong>$1.500</strong> y descuenta <strong>1 unidad mínima</strong>. Si la caja estaba cerrada, se abre y quedan 9 unidades disponibles.</li>
 </ol>
 <table>
-    <thead><tr><th>Cajas</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
+    <thead><tr><th>Cant. caja</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
     <tbody><tr><td class="center">0</td><td class="center">1</td><td>(1 × $1.500)</td><td class="right">$1.500</td><td class="right">99</td></tr></tbody>
 </table>
 
 <h3>3.4 Vender la caja completa</h3>
 <ol>
     <li>Agregue el producto al carrito.</li>
-    <li>Deje <strong>Cajas = 1</strong> y <strong>Und = 0</strong>.</li>
-    <li>El sistema cobra <strong>$12.000</strong> y descuenta <strong>10 unidades internas</strong>.</li>
+    <li>Deje <strong>Cant. caja = 1</strong> y <strong>Und = 0</strong>.</li>
+    <li>El sistema cobra <strong>$12.000</strong> y descuenta <strong>10 unidades mínimas</strong>.</li>
 </ol>
 <table>
-    <thead><tr><th>Cajas</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
+    <thead><tr><th>Cant. caja</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
     <tbody><tr><td class="center">1</td><td class="center">0</td><td>(1 × $12.000)</td><td class="right">$12.000</td><td class="right">90</td></tr></tbody>
 </table>
 
 <h3>3.5 Vender 2 cajas y 3 sobres</h3>
-<p>En la misma fila escriba <strong>Cajas = 2</strong> y <strong>Und = 3</strong>. El sistema cobra por presentación y descuenta el equivalente completo.</p>
+<p>En la misma fila escriba <strong>Cant. caja = 2</strong> y <strong>Und = 3</strong>. El sistema cobra por presentación y descuenta el equivalente completo.</p>
 <table>
-    <thead><tr><th>Cajas</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
+    <thead><tr><th>Cant. caja</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Stock después</th></tr></thead>
     <tbody><tr><td class="center">2</td><td class="center">3</td><td>(2 × $12.000) + (3 × $1.500)</td><td class="right">$28.500</td><td class="right">67</td></tr></tbody>
 </table>
 
 <div class="ok">
-    <strong>Devoluciones:</strong> si el cliente devuelve un sobre, se devuelve $1.500 y regresa 1 unidad interna. Si devuelve la caja, se devuelven $12.000 y regresan 10 unidades internas. El total de la devolución usa el mismo criterio de precios de la venta.
+    <strong>Devoluciones:</strong> si el cliente devuelve un sobre, se devuelve $1.500 y regresa 1 unidad mínima. Si devuelve la caja, se devuelven $12.000 y regresan 10 unidades mínimas. El total de la devolución usa el mismo criterio de precios de la venta.
 </div>
 
 <div class="pagebreak"></div>
@@ -171,20 +194,19 @@ $html = <<<'HTML'
 <p>Cuando la caja no se abre (por ejemplo, un producto sellado que no se vende suelto):</p>
 <table>
     <tbody>
-        <tr><td style="width:60mm"><strong>Tipo de Venta</strong></td><td>CAJA</td></tr>
-        <tr><td><strong>Unidades internas por caja</strong></td><td>12</td></tr>
-        <tr><td><strong>Unidades internas sueltas</strong></td><td>No se venden sueltas</td></tr>
+        <tr><td style="width:60mm"><strong>Forma de Venta</strong></td><td>Caja completa</td></tr>
+        <tr><td><strong>Unidades por caja</strong></td><td>12</td></tr>
         <tr><td><strong>Precio Venta (caja cerrada)</strong></td><td>$36.000</td></tr>
     </tbody>
 </table>
-<p>En el POS solo se digita el número de cajas. Al vender 1 caja se descuentan 12 unidades internas. Si se intenta vender una unidad interna suelta, el sistema no lo permite.</p>
+<p>En el POS solo se digita el número de cajas. Al vender 1 caja se descuentan 12 unidades mínimas. La columna <em>Und</em> queda bloqueada: el sistema no permite vender unidades sueltas.</p>
 
 <h2>5. Ejemplo C: venta por fracción decimal (0.5 litros)</h2>
 <p>Para productos que se venden por medida, como un thinner que se vende por litros:</p>
 <table>
     <tbody>
         <tr><td style="width:60mm"><strong>Descripción</strong></td><td>Thinner acrílico</td></tr>
-        <tr><td><strong>Tipo de Venta</strong></td><td>FRACCION_DECIMAL</td></tr>
+        <tr><td><strong>Forma de Venta</strong></td><td>Fracción decimal</td></tr>
         <tr><td><strong>Unidad de Medida</strong></td><td>LITRO</td></tr>
         <tr><td><strong>Cantidad x Unidad</strong></td><td>1</td></tr>
         <tr><td><strong>Precio Venta (litro)</strong></td><td>$9.000</td></tr>
@@ -211,44 +233,84 @@ $html = <<<'HTML'
 <p>Para un producto que no tiene caja ni se vende por medida (por ejemplo, un cepillo de dientes):</p>
 <table>
     <tbody>
-        <tr><td style="width:60mm"><strong>Tipo de Venta</strong></td><td>UNIDAD</td></tr>
-        <tr><td><strong>Unidades internas por caja</strong></td><td>1</td></tr>
+        <tr><td style="width:60mm"><strong>Forma de Venta</strong></td><td>Unidad (entera)</td></tr>
         <tr><td><strong>Precio Venta</strong></td><td>$3.500</td></tr>
     </tbody>
 </table>
 <p>En el POS se escribe la cantidad en la columna <strong>Und</strong>. Vender 3 unidades cobra $10.500 y descuenta 3 unidades del inventario.</p>
 
+<h2>7. Ejemplo E: caja de 50 sobres de 10 pastillas (tres niveles)</h2>
+<p>Para empaques de tres niveles: caja &rarr; sobre &rarr; pastilla. Cada nivel se vende y se cobra a su propio precio.</p>
+
+<h3>7.1 Registro del producto</h3>
+<table>
+    <tbody>
+        <tr><td style="width:60mm"><strong>Descripción</strong></td><td>Acetaminofén caja x 50 sobres x 10 pastillas</td></tr>
+        <tr><td><strong>Forma de Venta</strong></td><td>Caja + Intermedio + Unidad</td></tr>
+        <tr><td><strong>Nombre del nivel intermedio</strong></td><td>Sobre</td></tr>
+        <tr><td><strong>Niveles intermedios por caja</strong></td><td>50</td></tr>
+        <tr><td><strong>Unidades mínimas por nivel</strong></td><td>10</td></tr>
+        <tr><td><strong>Unidades por caja</strong></td><td>500 (se calcula solo: 50 × 10) y queda bloqueado</td></tr>
+        <tr><td><strong>Precio Compra</strong></td><td>$50 (por pastilla)</td></tr>
+        <tr><td><strong>Precio Venta (caja)</strong></td><td>$30.000</td></tr>
+        <tr><td><strong>Precio Venta (sobre)</strong></td><td>$700</td></tr>
+        <tr><td><strong>Precio Venta (unidad mínima)</strong></td><td>$100 (por pastilla)</td></tr>
+    </tbody>
+</table>
+
+<h3>7.2 Cómo queda el inventario</h3>
+<p>El stock se lleva en <strong>unidades mínimas (pastillas)</strong>. Un ingreso de 2 cajas deja <strong>1.000 pastillas</strong> (2 × 500). El POS muestra ese stock desglosado: "2 caja(s)".</p>
+
+<h3>7.3 Vender en el POS</h3>
+<p>Al agregar el producto al carrito se crean tres columnas: <strong>Cant. caja</strong>, <strong>Sobre</strong> y <strong>Und</strong> (pastillas). Puede escribir cantidades en las tres al mismo tiempo.</p>
+<table>
+    <thead><tr><th>Cant. caja</th><th>Sobre</th><th>Und</th><th>Cálculo</th><th class="right">Total</th><th class="right">Pastillas descontadas</th></tr></thead>
+    <tbody>
+        <tr><td class="center">0</td><td class="center">0</td><td class="center">3</td><td>3 × $100</td><td class="right">$300</td><td class="right">3</td></tr>
+        <tr><td class="center">0</td><td class="center">2</td><td class="center">0</td><td>2 × $700</td><td class="right">$1.400</td><td class="right">20</td></tr>
+        <tr><td class="center">1</td><td class="center">3</td><td class="center">5</td><td>$30.000 + (3 × $700) + (5 × $100)</td><td class="right">$32.600</td><td class="right">535</td></tr>
+    </tbody>
+</table>
+
+<div class="warn">
+    <strong>Validaciones del nivel intermedio:</strong> el sistema exige el nombre del nivel (Sobre), cuántos niveles trae la caja, cuántas unidades mínimas trae cada nivel y el precio del nivel. Si alguno falta, el producto no se guarda.
+</div>
+
 <div class="pagebreak"></div>
 
-<h2>7. Resumen rápido para el cajero</h2>
+<h2>8. Resumen rápido para el cajero</h2>
 <table>
     <thead>
         <tr><th style="width:45mm">Lo que el cliente pide</th><th>Qué hacer en el POS</th><th style="width:45mm">Qué cobra</th></tr>
     </thead>
     <tbody>
-        <tr><td>Una caja completa</td><td>Cajas = 1, Und = 0</td><td>Precio de la caja</td></tr>
-        <tr><td>Un sobre suelto</td><td>Cajas = 0, Und = 1</td><td>Precio de la unidad interna</td></tr>
-        <tr><td>Dos cajas y tres sobres</td><td>Cajas = 2, Und = 3</td><td>2 cajas + 3 unidades internas</td></tr>
+        <tr><td>Una caja completa</td><td>Cant. caja = 1, Und = 0</td><td>Precio de la caja</td></tr>
+        <tr><td>Un sobre suelto</td><td>Cant. caja = 0, Und = 1</td><td>Precio de la unidad suelta</td></tr>
+        <tr><td>Dos cajas y tres sobres</td><td>Cant. caja = 2, Und = 3</td><td>2 cajas + 3 unidades sueltas</td></tr>
+        <tr><td>Una caja, tres sobres y cinco pastillas</td><td>Cant. caja = 1, Sobre = 3, Und = 5</td><td>Cada nivel a su precio</td></tr>
         <tr><td>Medio litro</td><td>Cantidad = 0.5</td><td>0.5 × precio por litro</td></tr>
         <tr><td>Tres unidades simples</td><td>Und = 3</td><td>3 × precio unitario</td></tr>
     </tbody>
 </table>
 
-<h2>8. Preguntas frecuentes</h2>
+<h2>9. Preguntas frecuentes</h2>
 <h3>¿Qué pasa si la caja trae 10 sobres pero solo quiero vender la caja completa?</h3>
-<p>Use tipo CAJA, configure 10 unidades internas por caja y deje "Unidades internas sueltas" en "No se venden sueltas". Así el inventario se descuenta por cajas completas.</p>
+<p>Use la forma de venta <strong>Caja completa</strong> e indique 10 unidades por caja. Así el inventario se descuenta por cajas completas y la columna <em>Und</em> queda bloqueada.</p>
 
 <h3>¿Puedo cambiar la equivalencia después de crear el producto?</h3>
-<p>Sí. Al editar el producto puede ajustar las unidades internas por caja y el precio de la unidad interna. El cambio aplica a las ventas siguientes; las facturas ya registradas conservan sus precios.</p>
+<p>Sí. Al editar el producto puede cambiar la forma de venta, las unidades por caja y los precios de cada nivel. El cambio aplica a las ventas siguientes; las facturas ya registradas conservan sus precios.</p>
 
 <h3>¿Por qué el precio del sobre no es la décima parte del precio de la caja?</h3>
-<p>Porque el precio de la unidad interna se configura aparte. Muchas veces vender suelto tiene un precio algo mayor al proporcional de la caja; el sistema respeta el precio que usted defina.</p>
+<p>Porque el precio de cada nivel se configura aparte. Muchas veces vender suelto tiene un precio algo mayor al proporcional de la caja; el sistema respeta el precio que usted defina.</p>
 
 <h3>¿Qué unidad se usa para el stock?</h3>
-<p>Siempre la unidad interna. Una caja de 10 sobres equivale a 10 unidades internas, y un litro equivale a 1 unidad de medida que se puede fraccionar.</p>
+<p>Siempre la unidad mínima. Una caja de 10 sobres equivale a 10 unidades mínimas, una caja de 50 sobres de 10 pastillas equivale a 500 unidades mínimas, y un litro equivale a 1 unidad de medida que se puede fraccionar.</p>
 
 <h3>¿Qué pasa con las devoluciones de productos fraccionados?</h3>
-<p>La devolución devuelve el valor correspondiente a lo devuelto y repone exactamente las unidades internas: un sobre devuelve 1 unidad interna, una caja devuelve 10.</p>
+<p>La devolución devuelve el valor correspondiente a lo devuelto y repone exactamente las unidades mínimas: un sobre devuelve 10 pastillas, una caja devuelve 500.</p>
+
+<h3>¿Puedo escribir un código de producto manualmente?</h3>
+<p>No. El código es un consecutivo numérico que asigna el sistema y no se puede repetir. Para identificar el producto use los códigos de barras #1, #2 y #3.</p>
 
 <p class="small" style="margin-top:10mm">Guía generada automáticamente por el sistema. Los precios de los ejemplos son ilustrativos; use los precios de su negocio al registrar cada producto.</p>
 
