@@ -18,7 +18,7 @@
 
 <!-- Filtro y búsqueda -->
 <div class="row mb-4">
-    <div class="col-md-6">
+    <div class="col-md-5">
         <div class="input-group">
             <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
             <input type="text" class="form-control" id="searchProducto" 
@@ -26,7 +26,14 @@
                    value="<?= \SIG\Core\View::esc($search ?? '') ?>">
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
+        <select class="form-select" id="filtroEstado">
+            <option value="ACTIVOS" selected>Activos</option>
+            <option value="INACTIVOS">Inactivos</option>
+            <option value="TODOS">Todos</option>
+        </select>
+    </div>
+    <div class="col-md-2">
         <select class="form-select" id="filtroCategoria">
             <option value="">Todas las categorías</option>
             <?php foreach ($catalogos['categorias'] ?? [] as $cat): ?>
@@ -62,12 +69,13 @@
                         <th>Equivalencia</th>
                         <th>P. Und Interna</th>
                         <th>Stock Mín</th>
+                        <th>Estado</th>
                         <th style="width:120px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyProductos">
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-5">
+                        <td colspan="12" class="text-center text-muted py-5">
                             <i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>
                             Cargando productos...
                         </td>
@@ -334,6 +342,16 @@
                                 <input type="number" class="form-control" name="precio_maximo_regulado" id="p_tope" step="0.01" min="0" placeholder="Sin tope">
                             </div>
                             <small class="text-muted">Vacío = el producto no tiene precio regulado</small>
+                        </div>
+
+                        <!-- Estado del producto (solo al editar) -->
+                        <div class="col-md-4" id="div_estado_producto" style="display:none;">
+                            <label class="form-label fw-semibold">Estado del Producto</label>
+                            <select class="form-select" name="activo" id="p_activo">
+                                <option value="1">Activo</option>
+                                <option value="0">Inactivo</option>
+                            </select>
+                            <small class="text-muted">Los inactivos no aparecen en el POS ni en la lista por defecto</small>
                         </div>
                     </div>
                 </div>
@@ -659,17 +677,22 @@ $(document).on('keyup', '#p_presentacion', function() {
 function cargarProductos(page, search) {
     page = page || 1;
     search = search || $('#searchProducto').val();
+    var estado = $('#filtroEstado').val() || 'ACTIVOS';
+    var url = BASE_URL + '/productos/listar?page=' + encodeURIComponent(page)
+        + '&search=' + encodeURIComponent(search)
+        + '&estado=' + encodeURIComponent(estado)
+        + '&_=' + Date.now(); // evita respuestas cacheadas
 
-    $('#tbodyProductos').html('<tr><td colspan="11" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
+    $('#tbodyProductos').html('<tr><td colspan="12" class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x d-block mb-3"></i>Cargando...</td></tr>');
 
-    $.getJSON(BASE_URL + '/productos/listar', { page: page, search: search }, function(res) {
+    $.getJSON(url, function(res) {
         if (!res.success) return;
 
         var d = res.data;
         var html = '';
 
         if (d.data.length === 0) {
-            html = '<tr><td colspan="11" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay productos</td></tr>';
+            html = '<tr><td colspan="12" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>No hay productos</td></tr>';
         } else {
             $.each(d.data, function(i, p) {
                 var rentClass = 'text-success';
@@ -696,6 +719,7 @@ function cargarProductos(page, search) {
                     '<td>' + equivalenciaProducto(p) + '</td>' +
                     '<td>' + (parseFloat(p.valor_unidad || 0) > 0 ? '$' + formatoNumero(p.valor_unidad) : '-') + '</td>' +
                     '<td>' + (p.stock_minimo || 1) + '</td>' +
+                    '<td>' + badgeEstadoProducto(p) + '</td>' +
                     '<td>' +
                         '<button class="btn btn-sm btn-outline-primary me-1" onclick="editarProducto(' + p.id_producto + ')" title="Editar"><i class="fas fa-edit"></i></button>' +
                         '<button class="btn btn-sm btn-outline-danger" onclick="confirmarEliminar(' + p.id_producto + ')" title="Eliminar"><i class="fas fa-trash"></i></button>' +
@@ -738,6 +762,14 @@ function getTipoVentaLabel(tipo) {
         'FRACCION_DECIMAL': '<span class="badge bg-warning text-dark">Fracción</span>'
     };
     return labels[tipo] || '<span class="badge bg-light text-dark">' + tipo + '</span>';
+}
+
+function badgeEstadoProducto(p) {
+    var activo = parseInt(p.activo, 10) === 1;
+    if (activo) {
+        return '<span class="badge bg-success">Activo</span>';
+    }
+    return '<span class="badge bg-danger">Inactivo</span>';
 }
 
 function equivalenciaProducto(p) {
@@ -785,6 +817,8 @@ $('#modalProducto').on('show.bs.modal', function() {
 // Guardar producto (con imagen)
 $('#formProducto').on('submit', function(e) {
     e.preventDefault();
+    var $form = $(this);
+    if ($form.data('guardando')) return; // evita envíos dobles
     if (!validarTipoVentaCaja()) return;
     var formData = new FormData(this);
 
@@ -794,6 +828,7 @@ $('#formProducto').on('submit', function(e) {
         formData.set('imagen_url', urlImg);
     }
 
+    $form.data('guardando', true);
     $.ajax({
         url: BASE_URL + '/productos/guardar',
         method: 'POST',
@@ -803,7 +838,10 @@ $('#formProducto').on('submit', function(e) {
         success: function(res) {
             if (res.success) {
                 $('#modalProducto').modal('hide');
-                cargarProductos(currentPage);
+                // La fila puede cambiar de lista al cambiar de estado: se
+                // recarga siempre desde la primera página y con el filtro vigente.
+                currentPage = 1;
+                cargarProductos(1);
                 PNotify.success({ text: res.message });
             } else {
                 PNotify.error({ text: res.message });
@@ -811,7 +849,10 @@ $('#formProducto').on('submit', function(e) {
         },
         error: function(xhr) {
             var res = xhr.responseJSON;
-            PNotify.error({ text: res?.message || 'Error al guardar' });
+            PNotify.error({ text: (res && res.message) || 'Error al guardar' });
+        },
+        complete: function() {
+            $form.removeData('guardando');
         }
     });
 });
@@ -867,6 +908,9 @@ function editarProducto(id) {
         $('#p_stock_minimo').val(p.stock_minimo);
         $('#p_rentabilidad').val(p.rentabilidad);
         $('#p_tope').val(p.precio_maximo_regulado || '');
+        // El estado solo se edita en productos existentes
+        $('#p_activo').val(parseInt(p.activo, 10) === 1 ? '1' : '0');
+        $('#div_estado_producto').show();
         // Detectar si la presentación fue auto-generada
         var autoPres = 'X' + (parseFloat(p.cantidad_por_unidad||1)).toString().replace(/\.?0+$/, '') + ' ' + (p.unidad_medida||'');
         if (p.presentacion === autoPres) {
@@ -906,6 +950,9 @@ $('#modalProducto').on('show.bs.modal', function(e) {
         $('#p_fraccion').val(0);
         toggleTipoVenta();
         $('#p_stock_minimo').val(1);
+        // Al crear el producto nace activo y el campo no se muestra
+        $('#div_estado_producto').hide();
+        $('#p_activo').val('1');
         $('#p_imagen_preview').html('<i class="fas fa-camera text-muted" style="font-size:24px"></i>');
     }
 });
@@ -943,6 +990,12 @@ $('#searchProducto').on('keyup', function() {
         currentPage = 1;
         cargarProductos(1);
     }, 400);
+});
+
+// Filtro por estado: por defecto solo activos
+$('#filtroEstado').on('change', function() {
+    currentPage = 1;
+    cargarProductos(1);
 });
 
 // Cargar al inicio
