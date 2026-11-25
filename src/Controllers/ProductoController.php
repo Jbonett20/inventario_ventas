@@ -45,7 +45,8 @@ class ProductoController
     {
         $page   = (int)($request->get('page', 1));
         $search = $request->get('search', '');
-        $result = $this->productoModel->listar($page, 25, $search);
+        $estado = (string)$request->get('estado', 'ACTIVOS');
+        $result = $this->productoModel->listar($page, 25, $search, $estado);
 
         Response::success($result);
     }

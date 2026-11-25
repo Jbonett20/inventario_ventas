@@ -17,13 +17,15 @@ class Producto
 
     /**
      * Listar todos los productos (con paginación)
+     *
+     * @param string $estado ACTIVOS (por defecto), INACTIVOS o TODOS
      */
     /** @return array<string, mixed> */
-    public function listar(int $page = 1, int $perPage = 25, string $search = ''): array
+    public function listar(int $page = 1, int $perPage = 25, string $search = '', string $estado = 'ACTIVOS'): array
     {
         $offset = ($page - 1) * $perPage;
 
-        $where = 'WHERE p.activo = 1';
+        $where = $this->filtroEstado($estado);
         $params = [];
 
         if (!empty($search)) {
@@ -67,6 +69,24 @@ class Producto
             'perPage'    => $perPage,
             'totalPages' => ceil(($total['total'] ?? 0) / $perPage),
         ];
+    }
+
+    /**
+     * Condición SQL del filtro de estado del producto.
+     * Cualquier valor distinto de INACTIVOS/TODOS se trata como ACTIVOS.
+     */
+    private function filtroEstado(string $estado): string
+    {
+        $estado = strtoupper(trim($estado));
+
+        if ($estado === 'INACTIVOS') {
+            return 'WHERE p.activo = 0';
+        }
+        if ($estado === 'TODOS') {
+            return 'WHERE 1 = 1';
+        }
+
+        return 'WHERE p.activo = 1';
     }
 
     /**
@@ -392,6 +412,24 @@ class Producto
         return $data;
     }
 
+    /**
+     * Normaliza el estado del producto: 1 = activo, 0 = inactivo.
+     */
+    private function normalizarActivo(mixed $valor): int
+    {
+        if (is_string($valor)) {
+            $valor = strtoupper(trim($valor));
+            if (in_array($valor, ['0', '', 'INACTIVO', 'INACTIVA', 'FALSE', 'NO'], true)) {
+                return 0;
+            }
+            if (in_array($valor, ['1', 'ACTIVO', 'ACTIVA', 'TRUE', 'SI'], true)) {
+                return 1;
+            }
+        }
+
+        return ((int)$valor) === 0 ? 0 : 1;
+    }
+
     /** @param array<string, mixed> $data */
     public function crear(array $data): int
     {
@@ -430,6 +468,7 @@ class Producto
             'tipo_venta'         => $data['tipo_venta'] ?? 'UNIDAD',
             'unidad_medida'      => $data['unidad_medida'] ?? '',
             'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
+            'activo'             => $this->normalizarActivo($data['activo'] ?? 1),
         ];
 
         $sql = "INSERT INTO vb_productos 
@@ -438,14 +477,14 @@ class Producto
                      id_iva, id_seccion, unidad_cerrada, fraccion,
                      unidades_intermedias, unidades_por_intermedio, nombre_intermedio, valor_intermedio,
                      valor_compra, valor_venta, valor_unidad, precio_maximo_regulado, rentabilidad, stock_minimo, imagen,
-                     tipo_venta, unidad_medida, cantidad_por_unidad)
+                     tipo_venta, unidad_medida, cantidad_por_unidad, activo)
                  VALUES 
                     (:codigo, :barras1, :barras2, :barras3,
                      :descripcion, :presentacion, :marca, :proveedor, :categoria,
                      :iva, :seccion, :unidad_cerrada, :fraccion,
                      :unidades_intermedias, :unidades_por_intermedio, :nombre_intermedio, :valor_intermedio,
                      :compra, :venta, :unidad, :tope, :rentabilidad, :stock_minimo, :imagen,
-                     :tipo_venta, :unidad_medida, :cantidad_por_unidad)";
+                     :tipo_venta, :unidad_medida, :cantidad_por_unidad, :activo)";
 
         // El código lo asigna el sistema. Si dos productos se crean al mismo
         // tiempo y el consecutivo se cruza, se recalcula y se reintenta.
@@ -496,7 +535,8 @@ class Producto
         $antes = $this->db->fetchOne(
             "SELECT valor_compra, valor_venta, valor_unidad, rentabilidad, precio_maximo_regulado,
                     tipo_venta, unidad_medida, cantidad_por_unidad, unidad_cerrada, fraccion,
-                    unidades_intermedias, unidades_por_intermedio, nombre_intermedio, valor_intermedio
+                    unidades_intermedias, unidades_por_intermedio, nombre_intermedio, valor_intermedio,
+                    activo
              FROM vb_productos WHERE id_producto = :id",
             ['id' => $id]
         ) ?: [];
@@ -541,7 +581,8 @@ class Producto
                     imagen = :imagen,
                     tipo_venta = :tipo_venta,
                     unidad_medida = :unidad_medida,
-                    cantidad_por_unidad = :cantidad_por_unidad
+                    cantidad_por_unidad = :cantidad_por_unidad,
+                    activo = :activo
                 WHERE id_producto = :id";
 
         $afectados = $this->db->executeAffected($sql, [
@@ -572,6 +613,9 @@ class Producto
             'tipo_venta'         => $data['tipo_venta'],
             'unidad_medida'      => $data['unidad_medida'] ?? '',
             'cantidad_por_unidad'=> (float)($data['cantidad_por_unidad'] ?? 1.0000),
+            'activo'             => array_key_exists('activo', $data)
+                                        ? $this->normalizarActivo($data['activo'])
+                                        : (int)($antes['activo'] ?? 1),
         ]);
 
         // Trazabilidad: si el admin cambió algún precio, queda registrado para siempre

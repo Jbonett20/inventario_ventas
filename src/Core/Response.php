@@ -19,6 +19,9 @@ class Response
         self::setSecurityHeaders();
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
+        // Los listados deben reflejar siempre el estado actual de la BD
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
 
         foreach ($headers as $key => $value) {
             header("{$key}: {$value}");
