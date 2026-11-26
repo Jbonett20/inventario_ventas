@@ -183,12 +183,15 @@ class Factura
             foreach ($detalles as &$det) {
                 $producto = $this->db->fetchOne(
                     "SELECT valor_compra, rentabilidad, tipo_venta, cantidad_por_unidad, unidad_cerrada, fraccion, valor_unidad,
-                            unidades_intermedias, unidades_por_intermedio, valor_intermedio
+                            unidades_intermedias, unidades_por_intermedio, valor_intermedio, activo, descripcion
                      FROM vb_productos WHERE id_producto = :id",
                     ['id' => $det['id_producto']]
                 );
                 if (!$producto) {
                     throw new \RuntimeException('El producto de la venta ya no existe.');
+                }
+                if ((int)($producto['activo'] ?? 1) !== 1) {
+                    throw new \RuntimeException('El producto "' . $producto['descripcion'] . '" está inactivo y no se puede facturar.');
                 }
 
                 $tipoVenta = $producto['tipo_venta'] ?? 'UNIDAD';
